@@ -1,0 +1,42 @@
+{
+  "name": "aidash",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AIDash V2.0 — 单用户 AI 决策面板（Web + MCP + SQLite）",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "dev": "tsx watch 10-aidash/src/server/main.ts",
+    "start": "node 10-aidash/dist/server/main.js",
+    "start:win": "powershell -NoProfile -File 10-aidash/scripts/start-aidash.ps1",
+    "build": "tsc -p 00-platform/config/tsconfig.server.json && node 00-platform/tools/copy-server-assets.mjs",
+    "typecheck": "tsc -p 00-platform/config/tsconfig.server.json --noEmit && tsc -p 10-aidash/src/web/tsconfig.json --noEmit",
+    "web:dev": "pnpm --filter aidash-web dev",
+    "web:build": "pnpm --filter aidash-web build",
+    "cli:build": "node 00-platform/tools/build-cli.mjs",
+    "test": "vitest run --config 00-platform/config/vitest.config.ts",
+    "test:watch": "vitest --config 00-platform/config/vitest.config.ts",
+    "coverage": "vitest run --config 00-platform/config/vitest.config.ts --coverage",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "better-sqlite3": "13.0.3",
+    "express": "5.3.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/express": "5.0.6",
+    "@types/node": "^24.10.0",
+    "@vitest/coverage-v8": "5.0.5",
+    "esbuild": "0.28.2",
+    "tsx": "^4.20.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

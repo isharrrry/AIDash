@@ -1,0 +1,15 @@
+# 换行策略：仓库里统一按文本处理（内部存 LF），避免跨平台 diff 噪音
+* text=auto
+
+# Windows 专用脚本一律检出为 CRLF：PowerShell 5.1 对纯 LF 的 .ps1 兼容性不稳
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制，禁止任何转换
+*.db binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,37 @@
+# ===== 敏感文件：绝不入库 =====
+# 令牌与日志。一律按文件名匹配，不要写带目录的规则 ——
+# 目录一旦搬迁，路径型规则会静默失效，明文令牌就可能被提交。
+token.txt
+*.token.txt
+log.txt
+*.log
+.env
+.env.*
+
+# ===== 运行时数据 =====
+# 数据库本体与 WAL/SHM 伴生文件；SQLite 运行时会自动生成。
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/10-aidash/data/
+/10-aidash/backups/
+
+# 值守壳本地配置（含端点与运行时参数，按人不同，不入库）
+aidash-watch.json
+
+# ===== 构建产物 =====
+# dist 含服务端编译结果、Web 静态产物与 CLI 单文件，均由 pnpm 重建，不入库。
+dist/
+coverage/
+node_modules/
+*.vsix
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.tmp
+.tmp/

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../10-aidash/src",
+    "outDir": "../../10-aidash/dist",
+    "types": ["node"]
+  },
+  "include": [
+    "../../10-aidash/src/shared/**/*.ts",
+    "../../10-aidash/src/server/**/*.ts",
+    "../../10-aidash/src/cli/**/*.ts"
+  ],
+  "exclude": ["node_modules", "../../10-aidash/dist", "../../10-aidash/src/web"]
+}
