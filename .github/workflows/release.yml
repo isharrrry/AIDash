@@ -71,4 +71,8 @@ jobs:
           npm pkg set name="@isharrrry/aidash-runner"
           npm pkg set version="${TAG#v}"
           printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
-          npm publish --registry=https://npm.pkg.github.com
+          if npm view "@isharrrry/aidash-runner@${TAG#v}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "Package version ${TAG#v} already exists; skipping publish."
+          else
+            npm publish --registry=https://npm.pkg.github.com
+          fi
