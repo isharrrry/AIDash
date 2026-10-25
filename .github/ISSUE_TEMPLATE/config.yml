@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用与接入文档
+    url: https://github.com/isharrrry/AIDash/blob/main/README.md
+    about: 启动、接入 agent、值守壳与安全说明
+  - name: 参与贡献
+    url: https://github.com/isharrrry/AIDash/blob/main/CONTRIBUTING.md
+    about: Agent 软件工程迭代与 Release 分支建议

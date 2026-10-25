@@ -1,0 +1,44 @@
+name: Bug report
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量给出可复现步骤；不要粘贴令牌、真实数据库或组织内部信息。
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你希望发生什么？
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么？有报错请贴脱敏后的关键日志。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 从哪个版本/提交开始，执行了哪些命令或操作？
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: tag、提交哈希或 AIDash 版本号
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 安全确认
+      options:
+        - label: 我确认内容里没有令牌、密钥、真实数据库或组织内部信息
+          required: true

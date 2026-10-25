@@ -1,0 +1,35 @@
+name: Feature request
+description: 提出一个场景或改进建议
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先说明场景，再说方案；AIDash 主干只保留最小共识，差异较大的需求可以走 Release 分支。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 谁在什么情况下遇到了什么问题？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 你希望 AIDash 怎么改？可以附替代方案。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案与代价
+      description: 有没有更简单的做法？对现有契约有什么影响？
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围
+      options:
+        - label: 这是主干需求
+        - label: 更适合放在独立 Release 分支

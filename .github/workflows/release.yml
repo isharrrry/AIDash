@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v2.0.0)'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: 40-build/pnpm-lock.yaml
+      - name: Install
+        run: pnpm -C 40-build install --frozen-lockfile
+      - name: Check
+        run: pnpm -C 40-build check
+      - name: Build
+        run: |
+          pnpm -C 40-build build
+          pnpm -C 40-build web:build
+      - name: Pack runner
+        run: |
+          cd 40-build/20-aidash-runner
+          npm pack
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "AIDash $TAG" --notes-file .github/release-notes-v2.0.0.md
+      - name: Attach package to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" 40-build/20-aidash-runner/*.tgz --repo "${{ github.repository }}" --clobber
+      - name: Publish runner to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PKG_DIR=$(mktemp -d)
+          cp -R 40-build/20-aidash-runner/. "$PKG_DIR"
+          cd "$PKG_DIR"
+          npm pkg set name="@isharrrry/aidash-runner"
+          npm pkg set version="${TAG#v}"
+          printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
+          npm publish --registry=https://npm.pkg.github.com
