@@ -18,6 +18,24 @@ export class ChannelRepo {
       | undefined;
   }
 
+  /**
+   * 批量取通道 key。
+   *
+   * 列表/摘要一次要展示几十条来自不同通道的记录；逐条 get() 会把一次请求
+   * 放大成 N+1。这里只投影 id + channel_key：调用方需要的只是一个映射，
+   * 不需要 title/status 等完整 Channel 字段。
+   */
+  findKeysByIds(ids: string[]): Map<string, string> {
+    if (ids.length === 0) return new Map();
+    const rows = this.db
+      .prepare(
+        `SELECT id, channel_key FROM channel
+          WHERE id IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(...ids) as Array<{ id: string; channel_key: string }>;
+    return new Map(rows.map((row) => [row.id, row.channel_key]));
+  }
+
   insert(channel: Channel): Channel {
     this.db
       .prepare(
@@ -141,7 +159,14 @@ export class ChannelRepo {
     }
     if (options.q) {
       // 别名也参与搜索：用户记得的是“登录 500 排查”，不是 auth-bug 这种 key。
-      where.push('(c.channel_key LIKE ? OR c.title LIKE ? OR c.alias LIKE ?)');
+      // 下面把 % 和 _ 转义成字面量，但 SQLite 的 LIKE 默认没有转义符：
+      // 不显式声明 ESCAPE，`\%`/`\_` 会被理解成“反斜杠 + 任意字符”，
+      // 搜含 _/% 的 key 或标题会直接 0 命中。源码里的 `\\` 会被 JS 还原成
+      // 单个反斜杠，SQLite 单引号字符串恰好把 `'\'` 当成一个反斜杠。
+      where.push(
+        `(c.channel_key LIKE ? ESCAPE '\\' OR c.title LIKE ? ESCAPE '\\'
+          OR c.alias LIKE ? ESCAPE '\\')`,
+      );
       const like = `%${options.q.replace(/[\\%_]/g, '\\$&')}%`;
       params.push(like, like, like);
     }

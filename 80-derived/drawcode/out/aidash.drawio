@@ -1,0 +1,1186 @@
+<mxfile host="app.diagrams.net" agent="drawcode" type="device">
+  <diagram id="drawcode" name="dataflow">
+    <mxGraphModel adaptiveColors="auto" dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="grp1" value="MOD-001" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="-60" width="240" height="786" as="geometry" />
+        </mxCell>
+        <mxCell id="grp2" value="接入" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp1">
+          <mxGeometry x="0" y="0" width="240" height="786" as="geometry" />
+        </mxCell>
+        <mxCell id="grp3" value="MOD-002" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="-60" width="240" height="910" as="geometry" />
+        </mxCell>
+        <mxCell id="grp4" value="卡片" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp3">
+          <mxGeometry x="0" y="0" width="240" height="910" as="geometry" />
+        </mxCell>
+        <mxCell id="grp5" value="MOD-003" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="750" y="-60" width="240" height="798" as="geometry" />
+        </mxCell>
+        <mxCell id="grp6" value="任务树" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp5">
+          <mxGeometry x="0" y="0" width="240" height="798" as="geometry" />
+        </mxCell>
+        <mxCell id="grp7" value="MOD-004" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="-60" width="240" height="586" as="geometry" />
+        </mxCell>
+        <mxCell id="grp8" value="决策" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp7">
+          <mxGeometry x="0" y="0" width="240" height="586" as="geometry" />
+        </mxCell>
+        <mxCell id="grp9" value="MOD-005" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="-60" width="240" height="898" as="geometry" />
+        </mxCell>
+        <mxCell id="grp10" value="增强" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp9">
+          <mxGeometry x="0" y="0" width="240" height="898" as="geometry" />
+        </mxCell>
+        <mxCell id="grp11" value="MOD-006" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1830" y="-60" width="240" height="474" as="geometry" />
+        </mxCell>
+        <mxCell id="grp12" value="知识库" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp11">
+          <mxGeometry x="0" y="0" width="240" height="474" as="geometry" />
+        </mxCell>
+        <mxCell id="grp13" value="MOD-007" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="2190" y="-60" width="240" height="798" as="geometry" />
+        </mxCell>
+        <mxCell id="grp14" value="审计与配置" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp13">
+          <mxGeometry x="0" y="0" width="240" height="798" as="geometry" />
+        </mxCell>
+        <mxCell id="grp15" value="MOD-008" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="2550" y="-60" width="240" height="810" as="geometry" />
+        </mxCell>
+        <mxCell id="grp16" value="界面" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp15">
+          <mxGeometry x="0" y="0" width="240" height="810" as="geometry" />
+        </mxCell>
+        <mxCell id="grp17" value="MOD-009" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="2910" y="-60" width="240" height="698" as="geometry" />
+        </mxCell>
+        <mxCell id="grp18" value="值守壳" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp17">
+          <mxGeometry x="0" y="0" width="240" height="698" as="geometry" />
+        </mxCell>
+        <mxCell id="grp19" value="MOD-010" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="3270" y="-60" width="240" height="374" as="geometry" />
+        </mxCell>
+        <mxCell id="grp20" value="契约" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp19">
+          <mxGeometry x="0" y="0" width="240" height="374" as="geometry" />
+        </mxCell>
+        <mxCell id="grp21" value="MOD-011" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="3630" y="-60" width="220" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="grp22" value="边界" style="swimlane;startSize=30;collapsible=0;recursiveResize=0;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="grp21">
+          <mxGeometry x="0" y="0" width="220" height="150" as="geometry" />
+        </mxCell>
+        <object id="n1" label="AccessAudit&lt;br&gt;HarnessAuditNote / in" symbolId="Mod001Entry.cs::AccessAudit" kind="signal" ctype="HarnessAuditNote" dir="in" alias="接入审计素材">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n2" label="认证与限流()&lt;br&gt;void AuthenticateCaller()" symbolId="Mod001Entry.cs::AuthenticateCaller" kind="func" ret="void" alias="认证与限流">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="460" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n3" label="ErrorOut&lt;br&gt;ErrorEnvelope / in" symbolId="Mod001Entry.cs::ErrorOut" kind="signal" ctype="ErrorEnvelope" dir="in" alias="错误信封">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n4" label="错误映射()&lt;br&gt;void MapError()" symbolId="Mod001Entry.cs::MapError" kind="func" ret="void" alias="错误映射">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="572" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n5" label="McpCall&lt;br&gt;McpToolCall / in" symbolId="Mod001Entry.cs::McpCall" kind="signal" ctype="McpToolCall" dir="in" alias="MCP 工具调用">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="260" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n6" label="RestCall&lt;br&gt;RestRequest / in" symbolId="Mod001Entry.cs::RestCall" kind="signal" ctype="RestRequest" dir="in" alias="REST 请求">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="360" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n7" label="路由分发()&lt;br&gt;void RouteRequest()" symbolId="Mod001Entry.cs::RouteRequest" kind="func" ret="void" alias="路由分发">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp2">
+            <mxGeometry x="30" y="684" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n8" label="卡片回答()&lt;br&gt;void AnswerCard()" symbolId="Mod002ChannelCard.cs::AnswerCard" kind="func" ret="void" alias="卡片回答">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="360" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n9" label="Card&lt;br&gt;CardRecord / in" symbolId="Mod002ChannelCard.cs::Card" kind="signal" ctype="CardRecord" dir="in" alias="卡片记录">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n10" label="CardEvent&lt;br&gt;CardEventEntry / in" symbolId="Mod002ChannelCard.cs::CardEvent" kind="signal" ctype="CardEventEntry" dir="in" alias="卡片事件">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n11" label="Channel&lt;br&gt;ChannelKey / in" symbolId="Mod002ChannelCard.cs::Channel" kind="signal" ctype="ChannelKey" dir="in" alias="通道键">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="260" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n12" label="超时置过期()&lt;br&gt;void ExpireCard()" symbolId="Mod002ChannelCard.cs::ExpireCard" kind="func" ret="void" alias="超时置过期">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="472" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n13" label="卡片发布()&lt;br&gt;void PostCard()" symbolId="Mod002ChannelCard.cs::PostCard" kind="func" ret="void" alias="卡片发布">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="584" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n14" label="建议卡片化()&lt;br&gt;void PublishSuggestion()" symbolId="Mod002ChannelCard.cs::PublishSuggestion" kind="func" ret="void" alias="建议卡片化">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="696" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n15" label="通道 upsert()&lt;br&gt;void UpsertChannel()" symbolId="Mod002ChannelCard.cs::UpsertChannel" kind="func" ret="void" alias="通道 upsert">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp4">
+            <mxGeometry x="30" y="808" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n16" label="认领任务()&lt;br&gt;void ClaimTask()" symbolId="Mod003TaskTree.cs::ClaimTask" kind="func" ret="void" alias="认领任务">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="360" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n17" label="带证据完成()&lt;br&gt;void CompleteWithEvidence()" symbolId="Mod003TaskTree.cs::CompleteWithEvidence" kind="func" ret="void" alias="带证据完成">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="472" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n18" label="建任务()&lt;br&gt;void CreateTask()" symbolId="Mod003TaskTree.cs::CreateTask" kind="func" ret="void" alias="建任务">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="584" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n19" label="Lease&lt;br&gt;HarnessLease / in" symbolId="Mod003TaskTree.cs::Lease" kind="signal" ctype="HarnessLease" dir="in" alias="认领租约">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n20" label="移动任务()&lt;br&gt;void MoveTask()" symbolId="Mod003TaskTree.cs::MoveTask" kind="func" ret="void" alias="移动任务">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="696" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n21" label="Task&lt;br&gt;TaskNode / in" symbolId="Mod003TaskTree.cs::Task" kind="signal" ctype="TaskNode" dir="in" alias="任务节点">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n22" label="TaskEvent&lt;br&gt;TaskEventEntry / in" symbolId="Mod003TaskTree.cs::TaskEvent" kind="signal" ctype="TaskEventEntry" dir="in" alias="任务事件">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp6">
+            <mxGeometry x="30" y="260" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n23" label="回答决策()&lt;br&gt;void AnswerDecision()" symbolId="Mod004Decision.cs::AnswerDecision" kind="func" ret="void" alias="回答决策">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp8">
+            <mxGeometry x="30" y="260" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n24" label="批量推进()&lt;br&gt;void BatchAdvance()" symbolId="Mod004Decision.cs::BatchAdvance" kind="func" ret="void" alias="批量推进">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp8">
+            <mxGeometry x="30" y="372" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n25" label="CardAnswer&lt;br&gt;CardAnswer / in" symbolId="Mod004Decision.cs::CardAnswer" kind="signal" ctype="CardAnswer" dir="in" alias="决策回答">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp8">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n26" label="超时过期()&lt;br&gt;void ExpireDecisions()" symbolId="Mod004Decision.cs::ExpireDecisions" kind="func" ret="void" alias="超时过期">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp8">
+            <mxGeometry x="30" y="484" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n27" label="Timeout&lt;br&gt;DecisionTimeout / in" symbolId="Mod004Decision.cs::Timeout" kind="signal" ctype="DecisionTimeout" dir="in" alias="决策超时">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp8">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n28" label="组装上下文()&lt;br&gt;void BuildContext()" symbolId="Mod005Enhance.cs::BuildContext" kind="func" ret="void" alias="组装上下文">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="460" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n29" label="生成汇报()&lt;br&gt;void ComposeReport()" symbolId="Mod005Enhance.cs::ComposeReport" kind="func" ret="void" alias="生成汇报">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="572" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n30" label="Context&lt;br&gt;ContextBundle / in" symbolId="Mod005Enhance.cs::Context" kind="signal" ctype="ContextBundle" dir="in" alias="增强上下文">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n31" label="Digest&lt;br&gt;MemoryDigest / in" symbolId="Mod005Enhance.cs::Digest" kind="signal" ctype="MemoryDigest" dir="in" alias="记忆归纳">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n32" label="归纳记忆()&lt;br&gt;void DigestMemory()" symbolId="Mod005Enhance.cs::DigestMemory" kind="func" ret="void" alias="归纳记忆">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="684" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n33" label="生成建议()&lt;br&gt;void GenerateSuggestion()" symbolId="Mod005Enhance.cs::GenerateSuggestion" kind="func" ret="void" alias="生成建议">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="796" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n34" label="Report&lt;br&gt;ReportDraft / in" symbolId="Mod005Enhance.cs::Report" kind="signal" ctype="ReportDraft" dir="in" alias="汇报草稿">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="260" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n35" label="Suggestion&lt;br&gt;LlmSuggestion / in" symbolId="Mod005Enhance.cs::Suggestion" kind="signal" ctype="LlmSuggestion" dir="in" alias="LLM 建议">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp10">
+            <mxGeometry x="30" y="360" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n36" label="Citation&lt;br&gt;KbCitation / in" symbolId="Mod006Knowledge.cs::Citation" kind="signal" ctype="KbCitation" dir="in" alias="知识引用">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp12">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n37" label="增量索引()&lt;br&gt;void IndexOkfDocument()" symbolId="Mod006Knowledge.cs::IndexOkfDocument" kind="func" ret="void" alias="增量索引">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp12">
+            <mxGeometry x="30" y="160" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n38" label="OkfDoc&lt;br&gt;OkfDocument / out" symbolId="Mod006Knowledge.cs::OkfDoc" kind="signal" ctype="OkfDocument" dir="out" alias="OKF 文档">
+          <mxCell style="shape=path;path=45,0 160,0 160,60 45,60 0,30;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp12">
+            <mxGeometry x="30" y="384" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n39" label="检索知识()&lt;br&gt;void SearchKnowledge()" symbolId="Mod006Knowledge.cs::SearchKnowledge" kind="func" ret="void" alias="检索知识">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp12">
+            <mxGeometry x="30" y="272" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n40" label="AuditTrail&lt;br&gt;AuditPersisted / in" symbolId="Mod007AuditConfig.cs::AuditTrail" kind="signal" ctype="AuditPersisted" dir="in" alias="已落库审计">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n41" label="健康检查()&lt;br&gt;void CheckHealth()" symbolId="Mod007AuditConfig.cs::CheckHealth" kind="func" ret="void" alias="健康检查">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="360" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n42" label="Config&lt;br&gt;RuntimeConfig / in" symbolId="Mod007AuditConfig.cs::Config" kind="signal" ctype="RuntimeConfig" dir="in" alias="运行时配置">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n43" label="Health&lt;br&gt;HealthSnapshot / in" symbolId="Mod007AuditConfig.cs::Health" kind="signal" ctype="HealthSnapshot" dir="in" alias="健康快照">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="260" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n44" label="加载配置()&lt;br&gt;void LoadConfig()" symbolId="Mod007AuditConfig.cs::LoadConfig" kind="func" ret="void" alias="加载配置">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="472" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n45" label="执行迁移()&lt;br&gt;void MigrateSchema()" symbolId="Mod007AuditConfig.cs::MigrateSchema" kind="func" ret="void" alias="执行迁移">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="584" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n46" label="审计落库()&lt;br&gt;void WriteAuditTrail()" symbolId="Mod007AuditConfig.cs::WriteAuditTrail" kind="func" ret="void" alias="审计落库">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp14">
+            <mxGeometry x="30" y="696" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n47" label="DecisionBatchRequest&lt;br&gt;DecisionBatch / in" symbolId="Mod008WebUi.cs::DecisionBatchRequest" kind="signal" ctype="DecisionBatch" dir="in" alias="批量决策请求">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n48" label="拖动任务()&lt;br&gt;void DragTask()" symbolId="Mod008WebUi.cs::DragTask" kind="func" ret="void" alias="拖动任务">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="260" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n49" label="MoveRequest&lt;br&gt;TaskMoveRequest / in" symbolId="Mod008WebUi.cs::MoveRequest" kind="signal" ctype="TaskMoveRequest" dir="in" alias="拖动任务请求">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n50" label="任务树看板()&lt;br&gt;void RenderTaskBoard()" symbolId="Mod008WebUi.cs::RenderTaskBoard" kind="func" ret="void" alias="任务树看板">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="372" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n51" label="展示记忆()&lt;br&gt;void ShowMemory()" symbolId="Mod008WebUi.cs::ShowMemory" kind="func" ret="void" alias="展示记忆">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="484" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n52" label="展示汇报()&lt;br&gt;void ShowReport()" symbolId="Mod008WebUi.cs::ShowReport" kind="func" ret="void" alias="展示汇报">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="596" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n53" label="提交决策()&lt;br&gt;void SubmitDecision()" symbolId="Mod008WebUi.cs::SubmitDecision" kind="func" ret="void" alias="提交决策">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp16">
+            <mxGeometry x="30" y="708" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n54" label="认领下一个()&lt;br&gt;void ClaimNextTask()" symbolId="Mod009ShellCli.cs::ClaimNextTask" kind="func" ret="void" alias="认领下一个">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="260" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n55" label="Heartbeat&lt;br&gt;HarnessHeartbeat / in" symbolId="Mod009ShellCli.cs::Heartbeat" kind="signal" ctype="HarnessHeartbeat" dir="in" alias="Harness 心跳">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n56" label="加载安全约束()&lt;br&gt;void LoadSafetyConstraints()" symbolId="Mod009ShellCli.cs::LoadSafetyConstraints" kind="func" ret="void" alias="加载安全约束">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="372" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n57" label="Progress&lt;br&gt;ProgressReport / in" symbolId="Mod009ShellCli.cs::Progress" kind="signal" ctype="ProgressReport" dir="in" alias="进度回报">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="160" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n58" label="注册心跳()&lt;br&gt;void RegisterHarness()" symbolId="Mod009ShellCli.cs::RegisterHarness" kind="func" ret="void" alias="注册心跳">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="484" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n59" label="回报进度()&lt;br&gt;void ReportProgress()" symbolId="Mod009ShellCli.cs::ReportProgress" kind="func" ret="void" alias="回报进度">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp18">
+            <mxGeometry x="30" y="596" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n60" label="导出契约()&lt;br&gt;void ExportAgentContract()" symbolId="Mod010HarnessContract.cs::ExportAgentContract" kind="func" ret="void" alias="导出契约">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp20">
+            <mxGeometry x="30" y="160" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n61" label="Safety&lt;br&gt;SafetyConstraintSet / in" symbolId="Mod010HarnessContract.cs::Safety" kind="signal" ctype="SafetyConstraintSet" dir="in" alias="安全约束">
+          <mxCell style="shape=path;path=0,0 115,0 160,30 115,60 0,60;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp20">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n62" label="校验模板()&lt;br&gt;void ValidateCardTemplate()" symbolId="Mod010HarnessContract.cs::ValidateCardTemplate" kind="func" ret="void" alias="校验模板">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="grp20">
+            <mxGeometry x="30" y="272" width="180" height="72" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="n63" label="Ticket&lt;br&gt;ExternalSystemRecord / out" symbolId="Mod011ExternalSystem.cs::Ticket" kind="signal" ctype="ExternalSystemRecord" dir="out" alias="外部工单">
+          <mxCell style="shape=path;path=45,0 160,0 160,60 45,60 0,30;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp22">
+            <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e1" label="read" rel="def-use" src="Mod001Entry.cs::AccessAudit" dst="Mod007AuditConfig.cs::WriteAuditTrail" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n1" target="n46">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e2" label="write" rel="def-use" src="Mod001Entry.cs::AuthenticateCaller" dst="Mod001Entry.cs::AccessAudit" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp2" source="n2" target="n1">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="496" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e3" label="write" rel="def-use" src="Mod001Entry.cs::AuthenticateCaller" dst="Mod001Entry.cs::ErrorOut" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp2" source="n2" target="n3">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="496" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e4" label="write" rel="def-use" src="Mod001Entry.cs::MapError" dst="Mod001Entry.cs::ErrorOut" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp2" source="n4" target="n3">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="608" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e5" label="read" rel="def-use" src="Mod001Entry.cs::McpCall" dst="Mod002ChannelCard.cs::PostCard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n5" target="n13">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="330" y="230" />
+              <mxPoint x="330" y="560" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e6" label="read" rel="def-use" src="Mod001Entry.cs::McpCall" dst="Mod002ChannelCard.cs::UpsertChannel" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n5" target="n15">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="330" y="230" />
+              <mxPoint x="330" y="784" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e7" label="read" rel="def-use" src="Mod001Entry.cs::McpCall" dst="Mod003TaskTree.cs::CreateTask" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n5" target="n18">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e8" label="read" rel="def-use" src="Mod001Entry.cs::McpCall" dst="Mod004Decision.cs::AnswerDecision" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n5" target="n23">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="185" />
+              <mxPoint x="1230" y="185" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e9" label="read" rel="def-use" src="Mod001Entry.cs::McpCall" dst="Mod006Knowledge.cs::SearchKnowledge" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n5" target="n39">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="185" />
+              <mxPoint x="1950" y="185" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e10" label="read" rel="def-use" src="Mod001Entry.cs::RestCall" dst="Mod008WebUi.cs::RenderTaskBoard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n6" target="n50">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="285" />
+              <mxPoint x="140" y="297" />
+              <mxPoint x="2670" y="297" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e11" label="write" rel="def-use" src="Mod001Entry.cs::RouteRequest" dst="Mod001Entry.cs::McpCall" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp2" source="n7" target="n5">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="720" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e12" label="write" rel="def-use" src="Mod001Entry.cs::RouteRequest" dst="Mod001Entry.cs::RestCall" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp2" source="n7" target="n6">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="720" />
+              <mxPoint x="225" y="390" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e13" label="write" rel="def-use" src="Mod002ChannelCard.cs::AnswerCard" dst="Mod002ChannelCard.cs::Card" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n8" target="n9">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e14" label="write" rel="def-use" src="Mod002ChannelCard.cs::AnswerCard" dst="Mod002ChannelCard.cs::CardEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n8" target="n10">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e15" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod003TaskTree.cs::CompleteWithEvidence" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n9" target="n17">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="690" y="30" />
+              <mxPoint x="690" y="448" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e16" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod004Decision.cs::AnswerDecision" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n23">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e17" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod005Enhance.cs::BuildContext" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n28">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e18" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod005Enhance.cs::DigestMemory" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n32">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e19" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod008WebUi.cs::RenderTaskBoard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n50">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e20" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod008WebUi.cs::SubmitDecision" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n53">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e21" label="read" rel="def-use" src="Mod002ChannelCard.cs::Card" dst="Mod010HarnessContract.cs::ValidateCardTemplate" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n9" target="n62">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e22" label="read" rel="def-use" src="Mod002ChannelCard.cs::CardEvent" dst="Mod007AuditConfig.cs::WriteAuditTrail" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n10" target="n46">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e23" rel="def-use" src="Mod002ChannelCard.cs::ExpireCard" dst="Mod002ChannelCard.cs::Card" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n12" target="n9">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="508" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e23_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e23">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e24" label="write" rel="def-use" src="Mod002ChannelCard.cs::ExpireCard" dst="Mod002ChannelCard.cs::CardEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n12" target="n10">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="508" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e25" rel="def-use" src="Mod002ChannelCard.cs::PostCard" dst="Mod002ChannelCard.cs::Card" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n13" target="n9">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="620" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e25_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e25">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e26" label="write" rel="def-use" src="Mod002ChannelCard.cs::PostCard" dst="Mod002ChannelCard.cs::CardEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n13" target="n10">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="620" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e27" rel="def-use" src="Mod002ChannelCard.cs::PublishSuggestion" dst="Mod002ChannelCard.cs::Card" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n14" target="n9">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="732" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e27_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e27">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e28" label="write" rel="def-use" src="Mod002ChannelCard.cs::PublishSuggestion" dst="Mod002ChannelCard.cs::CardEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n14" target="n10">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="732" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e29" label="write" rel="def-use" src="Mod002ChannelCard.cs::UpsertChannel" dst="Mod002ChannelCard.cs::Channel" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp4" source="n15" target="n11">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="844" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e30" label="write" rel="def-use" src="Mod003TaskTree.cs::ClaimTask" dst="Mod003TaskTree.cs::Lease" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n16" target="n19">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e31" label="write" rel="def-use" src="Mod003TaskTree.cs::ClaimTask" dst="Mod003TaskTree.cs::Task" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n16" target="n21">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e32" label="write" rel="def-use" src="Mod003TaskTree.cs::ClaimTask" dst="Mod003TaskTree.cs::TaskEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n16" target="n22">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e33" rel="def-use" src="Mod003TaskTree.cs::CompleteWithEvidence" dst="Mod003TaskTree.cs::Task" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n17" target="n21">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="508" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e33_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e33">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e34" label="write" rel="def-use" src="Mod003TaskTree.cs::CompleteWithEvidence" dst="Mod003TaskTree.cs::TaskEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n17" target="n22">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="508" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e35" rel="def-use" src="Mod003TaskTree.cs::CreateTask" dst="Mod003TaskTree.cs::Task" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n18" target="n21">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="620" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e35_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e35">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e36" label="write" rel="def-use" src="Mod003TaskTree.cs::CreateTask" dst="Mod003TaskTree.cs::TaskEvent" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n18" target="n22">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="620" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e37" rel="def-use" src="Mod003TaskTree.cs::Lease" dst="Mod003TaskTree.cs::CompleteWithEvidence" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n19" target="n17">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="508" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e37_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e37">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e38" rel="def-use" src="Mod003TaskTree.cs::MoveTask" dst="Mod003TaskTree.cs::Task" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp6" source="n20" target="n21">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="732" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e38_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e38">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e39" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod005Enhance.cs::BuildContext" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n21" target="n28">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e40" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod005Enhance.cs::DigestMemory" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n21" target="n32">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e41" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod008WebUi.cs::DragTask" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n21" target="n48">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="860" y="175" />
+              <mxPoint x="2670" y="175" />
+              <mxPoint x="2670" y="185" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e42" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod008WebUi.cs::RenderTaskBoard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n21" target="n50">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e43" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod009ShellCli.cs::ClaimNextTask" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n21" target="n54">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="860" y="175" />
+              <mxPoint x="3030" y="175" />
+              <mxPoint x="3030" y="185" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e44" label="read" rel="def-use" src="Mod003TaskTree.cs::Task" dst="Mod009ShellCli.cs::ReportProgress" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n21" target="n59">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e45" label="read" rel="def-use" src="Mod003TaskTree.cs::TaskEvent" dst="Mod007AuditConfig.cs::WriteAuditTrail" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n22" target="n46">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e46" label="write" rel="def-use" src="Mod004Decision.cs::AnswerDecision" dst="Mod004Decision.cs::CardAnswer" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp8" source="n23" target="n25">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="296" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e47" label="write" rel="def-use" src="Mod004Decision.cs::BatchAdvance" dst="Mod004Decision.cs::CardAnswer" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp8" source="n24" target="n25">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="408" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e48" label="read" rel="def-use" src="Mod004Decision.cs::CardAnswer" dst="Mod002ChannelCard.cs::AnswerCard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n25" target="n8">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e49" rel="def-use" src="Mod004Decision.cs::CardAnswer" dst="Mod004Decision.cs::AnswerDecision" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp8" source="n25" target="n23">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="296" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e49_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e49">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e50" rel="def-use" src="Mod004Decision.cs::CardAnswer" dst="Mod004Decision.cs::BatchAdvance" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp8" source="n25" target="n24">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="408" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e50_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e50">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e51" label="write" rel="def-use" src="Mod004Decision.cs::ExpireDecisions" dst="Mod004Decision.cs::Timeout" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp8" source="n26" target="n27">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="520" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e52" label="read" rel="def-use" src="Mod004Decision.cs::Timeout" dst="Mod002ChannelCard.cs::ExpireCard" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n27" target="n12">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e53" label="write" rel="def-use" src="Mod005Enhance.cs::BuildContext" dst="Mod005Enhance.cs::Context" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n28" target="n30">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="496" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e54" label="write" rel="def-use" src="Mod005Enhance.cs::ComposeReport" dst="Mod005Enhance.cs::Report" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n29" target="n34">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="608" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e55" label="read" rel="def-use" src="Mod005Enhance.cs::Context" dst="Mod005Enhance.cs::ComposeReport" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n30" target="n29">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="608" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e56" rel="def-use" src="Mod005Enhance.cs::Context" dst="Mod005Enhance.cs::GenerateSuggestion" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n30" target="n33">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="832" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e56_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e56">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e57" label="read" rel="def-use" src="Mod005Enhance.cs::Digest" dst="Mod008WebUi.cs::ShowMemory" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n31" target="n51">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e58" rel="def-use" src="Mod005Enhance.cs::DigestMemory" dst="Mod005Enhance.cs::Digest" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n32" target="n31">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="720" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e58_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e58">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="-34" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e59" label="write" rel="def-use" src="Mod005Enhance.cs::GenerateSuggestion" dst="Mod005Enhance.cs::Suggestion" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp10" source="n33" target="n35">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="832" />
+              <mxPoint x="225" y="390" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e60" label="read" rel="def-use" src="Mod005Enhance.cs::Report" dst="Mod008WebUi.cs::ShowReport" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n34" target="n52">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e61" label="read" rel="def-use" src="Mod005Enhance.cs::Suggestion" dst="Mod002ChannelCard.cs::PublishSuggestion" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n35" target="n14">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e62" rel="def-use" src="Mod006Knowledge.cs::Citation" dst="Mod005Enhance.cs::BuildContext" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n36" target="n28">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1770" y="30" />
+              <mxPoint x="1770" y="436" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e62_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e62">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="-17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e63" label="write" rel="def-use" src="Mod006Knowledge.cs::IndexOkfDocument" dst="Mod006Knowledge.cs::Citation" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp12" source="n37" target="n36">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="196" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e64" label="read" rel="def-use" src="Mod006Knowledge.cs::OkfDoc" dst="Mod006Knowledge.cs::IndexOkfDocument" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp12" source="n38" target="n37">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="15" y="414" />
+              <mxPoint x="15" y="196" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e65" label="write" rel="def-use" src="Mod006Knowledge.cs::SearchKnowledge" dst="Mod006Knowledge.cs::Citation" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp12" source="n39" target="n36">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="308" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e66" label="read" rel="def-use" src="Mod007AuditConfig.cs::AuditTrail" dst="Mod007AuditConfig.cs::CheckHealth" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n40" target="n41">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="90" />
+              <mxPoint x="225" y="396" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e67" label="write" rel="def-use" src="Mod007AuditConfig.cs::CheckHealth" dst="Mod007AuditConfig.cs::Health" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n41" target="n43">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="396" />
+              <mxPoint x="225" y="290" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e68" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod001Entry.cs::AuthenticateCaller" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n42" target="n2">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="e68_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e68">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e69" label="read" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod004Decision.cs::ExpireDecisions" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n42" target="n26">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e70" label="read" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod005Enhance.cs::GenerateSuggestion" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n42" target="n33">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2205" y="130" />
+              <mxPoint x="2205" y="772" />
+              <mxPoint x="1695" y="772" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e71" label="read" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod007AuditConfig.cs::MigrateSchema" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n42" target="n45">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="190" />
+              <mxPoint x="225" y="620" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e72" label="read" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod009ShellCli.cs::RegisterHarness" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n42" target="n58">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e73" label="read" rel="def-use" src="Mod007AuditConfig.cs::Config" dst="Mod010HarnessContract.cs::ExportAgentContract" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n42" target="n60">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2300" y="85" />
+              <mxPoint x="3390" y="85" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e74" rel="def-use" src="Mod007AuditConfig.cs::LoadConfig" dst="Mod007AuditConfig.cs::Config" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n44" target="n42">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="508" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e74_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e74">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e75" rel="def-use" src="Mod007AuditConfig.cs::MigrateSchema" dst="Mod007AuditConfig.cs::AuditTrail" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n45" target="n40">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="620" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e75_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e75">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="34" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e76" rel="def-use" src="Mod007AuditConfig.cs::WriteAuditTrail" dst="Mod007AuditConfig.cs::AuditTrail" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp14" source="n46" target="n40">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="732" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <mxCell id="e76_label" value="write" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e76">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e77" rel="def-use" src="Mod008WebUi.cs::DecisionBatchRequest" dst="Mod004Decision.cs::BatchAdvance" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n47" target="n24">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="e77_label" value="read" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e77">
+          <mxGeometry x="0" y="0" relative="1" as="geometry"><mxPoint x="0" y="17" as="offset" /></mxGeometry>
+        </mxCell>
+        <object id="e78" label="write" rel="def-use" src="Mod008WebUi.cs::DragTask" dst="Mod008WebUi.cs::MoveRequest" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp16" source="n48" target="n49">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="296" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e79" label="read" rel="def-use" src="Mod008WebUi.cs::MoveRequest" dst="Mod003TaskTree.cs::MoveTask" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n49" target="n20">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e80" label="write" rel="def-use" src="Mod008WebUi.cs::SubmitDecision" dst="Mod008WebUi.cs::DecisionBatchRequest" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp16" source="n53" target="n47">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="744" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e81" label="write" rel="def-use" src="Mod009ShellCli.cs::ClaimNextTask" dst="Mod009ShellCli.cs::Progress" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp18" source="n54" target="n57">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="296" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e82" label="read" rel="def-use" src="Mod009ShellCli.cs::Heartbeat" dst="Mod001Entry.cs::AuthenticateCaller" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n55" target="n2">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e83" label="read" rel="def-use" src="Mod009ShellCli.cs::Progress" dst="Mod003TaskTree.cs::ClaimTask" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;" edge="1" parent="1" source="n57" target="n16">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="e84" label="write" rel="def-use" src="Mod009ShellCli.cs::RegisterHarness" dst="Mod009ShellCli.cs::Heartbeat" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp18" source="n58" target="n55">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="520" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e85" label="write" rel="def-use" src="Mod009ShellCli.cs::ReportProgress" dst="Mod009ShellCli.cs::Progress" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp18" source="n59" target="n57">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="632" />
+              <mxPoint x="225" y="190" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e86" label="write" rel="def-use" src="Mod010HarnessContract.cs::ExportAgentContract" dst="Mod010HarnessContract.cs::Safety" rw="write">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="grp20" source="n60" target="n61">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="196" />
+              <mxPoint x="225" y="90" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+        <object id="e87" label="read" rel="def-use" src="Mod010HarnessContract.cs::Safety" dst="Mod009ShellCli.cs::LoadSafetyConstraints" rw="read">
+          <mxCell style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;jumpStyle=arc;jumpSize=6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n61" target="n56">
+            <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="3210" y="30" />
+              <mxPoint x="3210" y="348" />
+            </Array>
+          </mxGeometry>
+          </mxCell>
+        </object>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

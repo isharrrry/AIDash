@@ -109,6 +109,85 @@ describe('通道别名：服务层', () => {
   });
 });
 
+describe('通道搜索：LIKE 通配符按字面匹配', () => {
+  // 回归背景：channel-repo 把 % 和 _ 转义成 `\%`/`\_`，但 SQLite 的 LIKE 默认没有
+  // 转义符。缺 ESCAPE 时反斜杠是普通字符，`\_` 变成“字面反斜杠 + 任意单字符”，
+  // 含 _/% 的关键词会假阴性；若干脆不转义，_/% 又会当通配符造成假阳性。
+
+  it('key 里的下划线按字面命中，且 my-project 不会被当成 my_project', () => {
+    const h = createHarness();
+    try {
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/my-project/topic' }, testCtx());
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/my_project/topic' }, testCtx());
+
+      // 片段命中：修复前这里 total=0（反斜杠被当成普通字符）。
+      const fragment = h.ctx.services.channels.list({ q: 'my_project' });
+      expect(fragment.items.map((item) => item.channel_key)).toEqual([
+        'devhost/my_project/topic',
+      ]);
+
+      // 完整 key 同样要命中；短横线那条不能被带出来（_ 不能当单字符通配符）。
+      const wholeKey = h.ctx.services.channels.list({ q: 'devhost/my_project/topic' });
+      expect(wholeKey.items.map((item) => item.channel_key)).toEqual([
+        'devhost/my_project/topic',
+      ]);
+    } finally {
+      h.close();
+    }
+  });
+
+  it('key 里的百分号按字面命中，% 不再充当多字符通配符', () => {
+    const h = createHarness();
+    try {
+      // channelKeySchema 当前正则不含 %，正常 REST/MCP 入口建不出这种 key；
+      // 但历史库或直写数据可能存在，repo 层仍要按字面匹配而不是 0 命中或误伤。
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/100%proj/topic' }, testCtx());
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/100xproj/topic' }, testCtx());
+
+      const listed = h.ctx.services.channels.list({ q: '100%proj' });
+      expect(listed.items.map((item) => item.channel_key)).toEqual([
+        'devhost/100%proj/topic',
+      ]);
+    } finally {
+      h.close();
+    }
+  });
+
+  it('标题里的百分号按字面命中，不会波及其他相近标题', () => {
+    const h = createHarness();
+    try {
+      h.ctx.services.channels.ensure(
+        { channel_key: 'devhost/exact/topic', title: '进度 100% 完成' },
+        testCtx(),
+      );
+      h.ctx.services.channels.ensure(
+        { channel_key: 'devhost/near/topic', title: '进度 100x 完成' },
+        testCtx(),
+      );
+
+      const listed = h.ctx.services.channels.list({ q: '100%' });
+      expect(listed.items.map((item) => item.channel_key)).toEqual(['devhost/exact/topic']);
+    } finally {
+      h.close();
+    }
+  });
+
+  it('普通关键词搜索行为不变：按包含关系只命中目标通道', () => {
+    const h = createHarness();
+    try {
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/plain-proj/topic' }, testCtx());
+      h.ctx.services.channels.ensure({ channel_key: 'devhost/other-proj/topic' }, testCtx());
+
+      const listed = h.ctx.services.channels.list({ q: 'plain-proj' });
+      expect(listed.items.map((item) => item.channel_key)).toEqual([
+        'devhost/plain-proj/topic',
+      ]);
+    } finally {
+      h.close();
+    }
+  });
+});
+
 describe('通道别名：REST', () => {
   it('PATCH alias 保存与清空都返回最新视图', async () => {
     const { a } = await boot();

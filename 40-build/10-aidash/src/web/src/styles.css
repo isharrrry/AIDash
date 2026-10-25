@@ -2420,11 +2420,23 @@ textarea::placeholder {
 }
 
 /*
+ * 根层没有缩进块，天然缺一个 4px 间距，导致根节点收纳按钮的中心比公式
+ * 算出来的位置左 4px——子节点那条竖线就接不到按钮正下方，看起来“偏了”。
+ * 这里把缺的间距补回来，让所有层级的按钮中心都落在 d * 16 + 15 上。
+ * 叶子节点的占位块也要补，否则同一层的标题起始位置会差 4px。
+ */
+.task-title-cell[data-depth='0'] > .task-toggle,
+.task-title-cell[data-depth='0'] > .task-toggle-spacer {
+  margin-left: 4px;
+}
+
+/*
  * 父节点到自己子节点的竖向连线。
  *
  * 子节点只画“自己到直接父节点”的那一段；父节点自己这一段如果没人画，
  * 子节点上方就会缺一截，看起来像悬空。这里从父节点收纳按钮的中心
- * 往下画到行底，和子节点缩进块的竖线在同一条 x 上（4px 间距 + 10px 半按钮）。
+ * 往下画到行底，和子节点缩进块的竖线在同一条 x 上
+ * （4px 间距 + 11px 半按钮，即 d * 16 + 15）。
  * 只画到行底而不是穿过整棵子树：子树里每一行自己会补那一段，避免重复叠色。
  *
  * 必须用 width + background 画，不能退回 border-left：
@@ -2437,8 +2449,8 @@ textarea::placeholder {
   position: absolute;
   top: 50%;
   bottom: -1px;
-  /* 收纳按钮 20px、左侧 4px 间距，中心在 14px；竖线必须和子节点的本级竖线对齐。 */
-  left: calc(var(--task-depth, 0) * 18px + 14px);
+  /* 收纳按钮 22px、左侧 4px 间距，中心在 15px；竖线必须和子节点的本级竖线对齐。 */
+  left: calc(var(--task-depth, 0) * 16px + 15px);
   width: 1px;
   background: var(--border-strong);
   opacity: 0.5;
@@ -2448,9 +2460,14 @@ textarea::placeholder {
 /*
  * 层级缩进与连线。
  *
- * 每一级画一条竖线（18px 一档），再用一个短横线连到该行的收纳按钮。
+ * 每一级画一条竖线（16px 一档），再用一个短横线连到该行的收纳按钮。
  * 为什么不用 margin：缩进只应发生在标题列内部，否则状态/类型/时间列
  * 会跟着每一级错位，表头就对不上了。
+ *
+ * 档位是 16 而不是 18：Windows 125% 缩放下 18 × 1.25 = 22.5 物理像素，
+ * 每深一级线就在整/半物理像素之间交替，抗锯齿结果不同，肉眼看到的就是
+ * 有的竖线粗、有的细。16 × 1.25 = 20 是整数，100/125/150/175% 下
+ * 所有层级的线都落在同一小数位置，粗细才一致。
  *
  * 竖线改成“一级一个元素”，而不是一张 repeating-gradient：
  * 渐变只能统一铺满整列，无法表达“某个祖先已经是最后一个、它的线该收了”。
@@ -2470,8 +2487,15 @@ textarea::placeholder {
   pointer-events: none;
 }
 
-/* 本级竖线：从行顶接到父节点那一段，非最后一个兄弟时贯通整行。 */
-.task-branch {
+/*
+ * 本级竖线与祖先延续线：非最后一个兄弟时贯通整行。
+ *
+ * .task-trunk 是「祖先还有下一个兄弟」时贯穿整棵子树的那一段：
+ * 兄弟之间隔着对方的后代，只在各自行内画线会让树干断开。
+ * 两条线必须共用同一条规则，宽度/颜色/透明度才不会各写一套后走样。
+ */
+.task-branch,
+.task-trunk {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -2484,27 +2508,44 @@ textarea::placeholder {
  * 自己这一级的竖线：最后一个兄弟只画上半截。
  * 下半截属于“下一个兄弟”，没有下一个兄弟就不该有下半截；
  * 上半截与父节点下来的线在行中线接成 └ 形。
+ *
+ * 终点用 calc(50% - 0.5px)：缩进块比行高多 1px（margin-bottom: -1px），
+ * 它的 50% 比行中线低 0.5px；减去这 0.5px 才能和横臂（中心已对齐行中线）接平。
  */
 .task-branch-last {
-  bottom: 50%;
+  bottom: calc(50% - 0.5px);
 }
 
 /*
  * 横向分支：从本级竖线接到收纳按钮中心（有子节点）或标题前（叶子）。
- * 起点是缩进块右侧 4px，也就是本级竖线的 x；20px 按钮中心在 4 + 10 = 14。
- * 叶子没有按钮，占位块同样是 20px，所以横线画 28px 正好停在标题前 4px。
+ * 竖线在缩进块右侧 1px，22px 按钮中心在 15px，所以有子节点时横线正好 16px；
+ * 叶子没有按钮，占位块同样 22px，标题从 4 + 22 + 4 = 30 开始，
+ * 横线从 -1 画到 29（宽 30px），停在标题前 1px。
+ *
+ * top 为什么是 calc(50% - 1px) 而不是 50%：
+ * 缩进块有 margin-bottom: -1px（为了压过行边框），它的高度比行高多 1px，
+ * 于是它的 50% 比行的中线低 0.5px；横线自身高 1px，几何中心还要再低 0.5px。
+ * 两段误差叠起来正好 1px——用户看到的「三角和横线没对齐」就是这 1px。
+ * 减去 1px 后横线中心与按钮垂直中心落在同一条 y 上（浏览器实测 cy 完全相等）。
  */
 .task-elbow {
   position: absolute;
-  top: 50%;
-  left: calc(100% - 4px);
-  width: 28px;
-  border-top: 1px solid var(--border-strong);
+  top: calc(50% - 1px);
+  left: calc(100% - 1px);
+  width: 30px;
+  /*
+   * 用 height + background 画横线，不用 border-top：
+   * 竖线是 1px 背景，而 border 在非 100% 缩放（如 Windows 125%）下
+   * 会被摊成 2 个物理像素，接在一起时横线明显更粗——用户反馈的
+   * 「线粗细不一致」就是这么来的。
+   */
+  height: 1px;
+  background: var(--border-strong);
   opacity: 0.5;
 }
 
 .task-title-cell.has-children .task-elbow {
-  width: 18px;
+  width: 16px;
 }
 
 /* 拖拽把手：只给标题，整行 draggable 会抢走点击打开详情和选中文字。 */
@@ -2546,14 +2587,17 @@ textarea::placeholder {
 
 /*
  * 收纳按钮与占位块同宽，保证同级标题起始位置一致。
- * 从 16px 放大到 20px：16px 盒子配 10px 字形在高分屏上几乎点不中，
- * 20px 既是更清楚的字形空间，也达到鼠标可稳定点击的最小尺寸。
+ * 从 16px → 20px → 22px：18px 的三角在密集任务树上仍然偏小，
+ * 且按钮小于 22px 时与 12.5px 正文的行高不成比例，视觉上像“粘”在标题上。
+ * 22px 盒子配 22px 字号的三角，点击热区也更大。
+ * 注意：改这个值必须同步改 TaskTree.tsx 里的 TREE_STEP 推导和
+ * .task-title-cell.has-children.expanded::before 的 x 公式。
  */
 .task-toggle,
 .task-toggle-spacer {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
 }
 
 .task-toggle {
@@ -2565,8 +2609,9 @@ textarea::placeholder {
   border-radius: 5px;
   background: transparent;
   color: var(--text);
-  opacity: 0.72;
-  font-size: 14px;
+  opacity: 0.8;
+  /* ▾ 的 ink box 只有 em 的六成左右，22px 字号在 22px 盒子里不会溢出。 */
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;

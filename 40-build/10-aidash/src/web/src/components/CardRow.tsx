@@ -87,9 +87,10 @@ export function QuestionCardRow({
         ) : null}
       </div>
 
-      {card.background_md ? (
+      {/* 列表接口默认不返回 background_md/body_md 等重字段，只给服务端算好的预览。 */}
+      {card.preview_md ? (
         <p className="excerpt">
-          <MarkdownInline source={truncate(card.background_md, 180)} fallback="" />
+          <MarkdownInline source={truncate(card.preview_md, 180)} fallback="" />
         </p>
       ) : null}
 
@@ -125,8 +126,9 @@ export function FeedCardRow({
   onOpen: () => void;
 }): ReactElement {
   const artifactUrl = safeHttpUrl(card.url);
+  // 列表默认只带 preview_md；summary/reason/detail_md 仍按原优先级回退。
   const detail =
-    card.summary || card.body_md || card.reason || card.detail_md || '';
+    card.summary || card.preview_md || card.reason || card.detail_md || '';
 
   return (
     <article

@@ -13,7 +13,8 @@ export interface AppContextValue {
   refreshAll: () => void;
   channels: ChannelView[];
   channelsLoading: boolean;
-  reloadChannels: () => void;
+  /** 刷新通道列表；返回 Promise，便于轮询等待本次请求结束。 */
+  reloadChannels: () => Promise<void>;
   currentChannelKey: string;
   setCurrentChannelKey: (key: string) => void;
   /** 当前聚焦的主对话（通道 project 段）；空串表示不按主对话筛选。 */

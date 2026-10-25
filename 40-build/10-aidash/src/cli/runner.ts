@@ -31,6 +31,14 @@ const TASK_LIST_PAGE_SIZE = 100;
 const TASK_LIST_MAX_PAGES = 10;
 const LOG_COMMAND_LIMIT = 160;
 
+/**
+ * 被限流后的等待时长。
+ * 为什么不解析服务端的 Retry-After：它只到整秒；即使按较慢的 60/分钟估算，补 1 个令牌也只要 1 秒，
+ * 跟着它醒来正好卡在边界上容易再吃一次 429。固定等 5 秒能一次补够，
+ * 也更简单 —— 这个值宁长勿短，反正限流本身就是异常路径。
+ */
+const RATE_LIMIT_WAIT_MS = 5_000;
+
 export interface RunContext {
   client: AidashMcpClient;
   config: WatchConfig;
@@ -68,6 +76,7 @@ export async function runWatch(base: RunContext, mode: RunMode): Promise<void> {
 
     while (!controller.signal.aborted) {
       let worked = false;
+      let rateLimited = false;
       try {
         worked = await runIteration(ctx, heartbeat);
       } catch (error) {
@@ -76,6 +85,12 @@ export async function runWatch(base: RunContext, mode: RunMode): Promise<void> {
           // 常驻模式下临时断网/服务重启不应杀掉值守壳；下一轮继续。
           // 业务错误（含 EVIDENCE_REQUIRED）不在这里吞掉：按契约以 exit 1 结束，避免假完成。
           ctx.logger.warn(`本轮通信失败，等待下次轮询：${errorMessage(error)}`);
+        } else if (isBusinessError(error) && error.code === 'RATE_LIMITED' && mode === 'run') {
+          // 限流是「稍后再来」而不是「做错了」，常驻模式必须等够时间再试，
+          // 否则每轮都会吃 429：日志刷满、配额一点没回，还会把服务端日志淹掉。
+          // 服务端窗口是分钟级的，用 poll_interval（通常 1~2 秒）去撞没有意义。
+          ctx.logger.warn(`被限流，等待后重试：${errorMessage(error)}`);
+          rateLimited = true;
         } else {
           throw error;
         }
@@ -83,7 +98,8 @@ export async function runWatch(base: RunContext, mode: RunMode): Promise<void> {
       if (mode === 'once') break;
       if (controller.signal.aborted) break;
       const delaySeconds = worked ? ctx.config.gap_seconds : ctx.config.poll_interval_seconds;
-      await sleep(delaySeconds * 1000, controller.signal);
+      // 限流时用一个明显长于轮询间隔的等待，让令牌桶真的有机会补充。
+      await sleep(rateLimited ? RATE_LIMIT_WAIT_MS : delaySeconds * 1000, controller.signal);
     }
 
     if (fatal) throw fatal;

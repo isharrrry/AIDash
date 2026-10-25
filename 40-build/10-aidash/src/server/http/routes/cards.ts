@@ -94,6 +94,8 @@ export function cardsRouter(ctx: AppContext): Router {
         statuses: listValues<CardStatus>(req.query.status, CARD_STATUSES),
         priorities: listValues<Priority>(req.query.priority, PRIORITIES),
         includeArchived: queryBool(req.query.include_archived),
+        // 列表默认为 null 的重字段；任务信息流/确实要全文的调用方显式传 true。
+        includeBody: queryBool(req.query.include_body),
         q: queryString(req.query.q),
         taskId: queryString(req.query.task_id),
         // 历史遗留：旧版允许无任务发卡，升级后这些卡需要一个可查看的入口。

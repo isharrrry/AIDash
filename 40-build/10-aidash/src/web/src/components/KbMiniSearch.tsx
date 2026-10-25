@@ -47,8 +47,11 @@ export function KbMiniSearch({
 
       {result.loading ? <Loading label="检索知识库…" /> : null}
       {result.error ? <ErrorBox message={result.error} onRetry={result.reload} /> : null}
-      {result.data?.kbStatus && result.data.kbStatus !== 'ok' ? (
-        <p className="warn-text">知识库状态：{result.data.kbStatus}</p>
+      {result.data?.degraded ? (
+        <p className="warn-text">
+          检索已降级：索引查询失败，当前只按标题/描述做子串匹配，正文命中可能缺失。
+          换个更短的关键词重试，或到设置页重建索引。
+        </p>
       ) : null}
 
       {result.data && query ? (

@@ -1,36 +1,40 @@
 import type { z } from 'zod';
 import { AppError } from '../../shared/errors.js';
-import { newClaimToken, newId } from '../../shared/ids.js';
-import {
-  taskClaimSchema,
-  taskCreateSchema,
-  taskReleaseSchema,
-  taskUpdateSchema,
-} from '../../shared/schemas.js';
+import { newId } from '../../shared/ids.js';
+import { assertNoSecrets } from '../../shared/secrets.js';
+import { taskCreateSchema } from '../../shared/schemas.js';
 import type { Clock } from '../../shared/time.js';
-import type { Card, Ctx, Page, Task, TaskStatus, TaskView, TreeNode } from '../../shared/types.js';
+import type { Ctx, Page, Task, TaskStatus, TaskView, TreeNode } from '../../shared/types.js';
 import { txImmediate, type Db } from '../db/connection.js';
 import type { CardRepo } from '../repos/card-repo.js';
 import type { EventRepo, HarnessRepo } from '../repos/support-repos.js';
 import type { TaskRepo } from '../repos/task-repo.js';
-import { toTaskView } from '../repos/task-repo.js';
 import type { AuditService } from './audit-service.js';
 import type { ChannelService } from './channel-service.js';
 import {
-  assertClaimToken,
-  assertTaskTransition,
-  cancelNeedsToken,
-  isDeferEvent,
-  isRiskEvent,
-  type TaskDeferEvent,
-  type TaskRiskEvent,
-  type TaskStatusEvent,
-} from './state-machine.js';
+  assertTaskDepth,
+  claimTask,
+  depthOf,
+  expireTaskLeases,
+  type TaskClaimInput,
+} from './task-service-lease.js';
+import {
+  getTaskView,
+  listTaskViews,
+  requireTask,
+  taskToView,
+  taskTree,
+} from './task-service-query.js';
+import {
+  applyTaskRelease,
+  applyTaskUpdate,
+  isTerminalTaskStatus,
+  type TaskReleaseInput,
+  type TaskUpdateInput,
+} from './task-service-state-events.js';
 
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
-export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
-export type TaskClaimInput = z.infer<typeof taskClaimSchema>;
-export type TaskReleaseInput = z.infer<typeof taskReleaseSchema>;
+export type { TaskClaimInput, TaskReleaseInput, TaskUpdateInput };
 
 export interface TaskServiceDeps {
   db: Db;
@@ -47,31 +51,15 @@ export interface TaskServiceDeps {
 
 const MAX_DEPTH_DEFAULT = 20;
 
-/** 哪些事件必须带令牌；cancel 只在已认领状态下需要，单独判断。 */
-const TASK_EVENT_NEEDS_TOKEN: Record<TaskStatusEvent, boolean> = {
-  submit: false,
-  start: true,
-  block: true,
-  unblock: true,
-  complete: true,
-  fail: true,
-  cancel: true,
-  release: true,
-};
-
 /**
- * task_event 只记录“改了哪些字段”，不复制字段全文。
+ * TaskService 的运行时依赖袋。
  *
- * description_md 可以内嵌 base64 截图（单条上限 2,000,000 字符）。原样把 patch 写进
- * detail_json，等于用户每点一次“保存字段”就在事件表里再存一份截图，数据库会迅速膨胀；
- * 审计真正需要的是“描述被改过、改成了多长”，正文本身已经在 task 行上。
+ * 子模块只接受结构化的 deps，而不是 TaskService 实例：
+ * 这样“状态事件 / 查询投影 / 租约与深度”之间没有反向依赖，
+ * 主类仍然持有唯一的事务编排入口。
  */
-function summarizePatch(patch: Partial<Task>): Record<string, unknown> {
-  const detail: Record<string, unknown> = { ...patch };
-  if (typeof detail.description_md === 'string') {
-    detail.description_md = `[omitted ${detail.description_md.length} chars]`;
-  }
-  return detail;
+interface TaskServiceRuntime extends TaskServiceDeps {
+  maxDepth: number;
 }
 
 export class TaskService {
@@ -85,6 +73,7 @@ export class TaskService {
   private readonly clock: Clock;
   private readonly leaseSeconds: number;
   private readonly maxDepth: number;
+  private readonly runtime: TaskServiceRuntime;
 
   constructor(deps: TaskServiceDeps) {
     this.db = deps.db;
@@ -97,6 +86,18 @@ export class TaskService {
     this.clock = deps.clock;
     this.leaseSeconds = deps.leaseSeconds;
     this.maxDepth = deps.maxDepth ?? MAX_DEPTH_DEFAULT;
+    this.runtime = {
+      db: this.db,
+      tasks: this.tasks,
+      cards: this.cards,
+      harnesses: this.harnesses,
+      events: this.events,
+      channels: this.channels,
+      audit: this.audit,
+      clock: this.clock,
+      leaseSeconds: this.leaseSeconds,
+      maxDepth: this.maxDepth,
+    };
   }
 
   create(
@@ -106,12 +107,21 @@ export class TaskService {
   ): { task: TaskView; created: boolean } {
     const { channel } = this.channels.ensure({ channel_key: input.channel_key }, ctx);
     if (input.idempotency_key) {
-      const existing = this.tasks.findByIdem(input.idempotency_key);
+      // 幂等键只在「本通道」内生效（D-1）。跨通道用同一个键是另一件事：
+      // 否则会返回别的通道的任务，并把这里刚 ensure 的通道留成空记录。
+      const existing = this.tasks.findByIdem(channel.id, input.idempotency_key);
       if (existing) {
         this.audit.record(ctx, 'task.create', 'ok', 'task', existing.id, { idempotent: true });
         return { task: this.toView(existing, channel.channel_key), created: false };
       }
     }
+
+    // 任务标题与描述会进入 MCP、Web、任务树，甚至被导出；与卡片正文共用同一套
+    // 敏感模式扫描，避免令牌绕开 card.post 从“建任务”入口落库。
+    assertNoSecrets({
+      title: input.title,
+      description_md: input.description_md ?? '',
+    });
 
     const parent = input.parent_id ? this.requireTask(input.parent_id) : null;
     if (parent && parent.channel_id !== channel.id) {
@@ -183,7 +193,7 @@ export class TaskService {
   }
 
   get(id: string): TaskView {
-    return this.toView(this.requireTask(id));
+    return getTaskView(this.runtime, id);
   }
 
   list(
@@ -200,49 +210,11 @@ export class TaskService {
     } = {},
     includeDescription = false,
   ): Page<TaskView> {
-    const channel = filter.channel_key
-      ? this.channels.getByKeyOrThrow(filter.channel_key)
-      : undefined;
-    const page = this.tasks.list(
-      {
-        channelId: channel?.id,
-        statuses: filter.status,
-        assignee: filter.assignee,
-        hasRisk: filter.has_risk,
-        riskOpen: filter.risk_open,
-        page: filter.page,
-        page_size: filter.page_size,
-      },
-      // 把“要不要正文”一路传到 SQL：repo 层不选 description_md，
-      // 数据库就不会把 base64 截图读进内存，而不只是响应体里丢掉。
-      includeDescription,
-    );
-    // 一页任务一次算完未读数，避免每个任务一次 COUNT。
-    const unread = this.cards.countUnreadForTasks(page.items.map((task) => task.id));
-    return {
-      ...page,
-      items: page.items.map((task) =>
-        this.toView(task, channel?.channel_key, includeDescription, unread.get(task.id) ?? 0),
-      ),
-    };
+    return listTaskViews(this.runtime, filter, includeDescription);
   }
 
   tree(channelKey: string, maxDepth?: number, includeDescription = false): TreeNode[] {
-    const channel = this.channels.getByKeyOrThrow(channelKey);
-    const roots = this.tasks.tree(channel.id, includeDescription);
-    // 整条通道的未读数一次取出，按 task_id 填到节点上；
-    // 树可能有上千个节点，逐节点查会把一次树请求放大成 N+1。
-    const unread = this.cards.countUnreadByTask(channel.id);
-    const fill = (nodes: TreeNode[], level: number): TreeNode[] => {
-      if (maxDepth !== undefined && level > maxDepth) return [];
-      return nodes.map((node) => ({
-        ...node,
-        channel_key: channel.channel_key,
-        unread_count: unread.get(node.id) ?? 0,
-        children: fill(node.children, level + 1),
-      }));
-    };
-    return fill(roots, 1);
+    return taskTree(this.runtime, channelKey, maxDepth, includeDescription);
   }
 
   /**
@@ -255,315 +227,15 @@ export class TaskService {
     input: TaskClaimInput,
     ctx: Ctx,
   ): { task: TaskView; claim_token: string; lease_expires_at: string; renewed: boolean } {
-    const task = this.requireTask(input.task_id);
-    if (!this.harnesses.get(input.harness_id)) {
-      throw new AppError('INVALID_ARGUMENT', 'HARNESS_NOT_REGISTERED', {
-        harness_id: input.harness_id,
-      });
-    }
-    const lease = clamp(input.lease_seconds ?? this.leaseSeconds, 1, 86_400);
-    const now = this.clock.now();
-    const token = input.claim_token?.trim() || newClaimToken();
-    const outcome = this.tasks.claim(task.id, input.harness_id, token, now, lease);
-    if (!outcome.ok) {
-      if (outcome.reason === 'ALREADY_CLAIMED') {
-        throw new AppError('ALREADY_CLAIMED', 'TASK_ALREADY_CLAIMED', { task_id: task.id });
-      }
-      if (outcome.reason === 'NOT_CLAIMABLE') {
-        throw new AppError('CONFLICT', 'TASK_NOT_CLAIMABLE', {
-          task_id: task.id,
-          status: outcome.task?.status,
-        });
-      }
-      throw new AppError('NOT_FOUND', 'TASK_NOT_FOUND', { task_id: task.id });
-    }
-
-    const claimed = outcome.task!;
-    txImmediate(this.db, () => {
-      this.events.task(
-        task.id,
-        outcome.renewed ? 'lease_renewed' : 'claimed',
-        ctx.actorLabel,
-        { harness_id: input.harness_id, lease_seconds: lease },
-        now,
-      );
-    });
-    this.audit.record(ctx, outcome.renewed ? 'task.renew' : 'task.claim', 'ok', 'task', task.id, {
-      harness_id: input.harness_id,
-    });
-    return {
-      task: this.toView(claimed),
-      claim_token: outcome.claimToken!,
-      lease_expires_at: new Date(claimed.claim_expires_at!).toISOString(),
-      renewed: outcome.renewed ?? false,
-    };
+    return claimTask(this.runtime, input, ctx);
   }
 
   update(input: TaskUpdateInput, ctx: Ctx): TaskView {
-    const task = this.requireTask(input.task_id);
-    const now = this.clock.now();
-    const patch = this.buildPatch(input);
-
-    if (!input.event) {
-      if (Object.keys(patch).length === 0) {
-        throw new AppError('INVALID_ARGUMENT', 'NOTHING_TO_UPDATE');
-      }
-      txImmediate(this.db, () => {
-        this.tasks.updateFields(task.id, { ...patch, updated_at: now });
-        this.events.task(task.id, 'updated', ctx.actorLabel, summarizePatch(patch), now);
-      });
-      this.audit.record(ctx, 'task.update', 'ok', 'task', task.id);
-      return this.toView(this.tasks.get(task.id)!);
-    }
-
-    if (input.event === 'release') {
-      return this.release(
-        {
-          task_id: task.id,
-          claim_token: input.claim_token ?? '',
-          reason: input.reason ?? 'released',
-        },
-        ctx,
-      );
-    }
-
-    // defer/undefer、flag_risk/unflag_risk 都不改变状态，必须在状态转移校验
-    // 之前分流：它们不是 TASK_TRANSITIONS 里的边，硬塞进去会变成
-    // “自己指向自己”的假状态机。
-    const rawEvent = input.event;
-    if (isDeferEvent(rawEvent)) {
-      return this.updateDeferral(task, rawEvent, input, patch, ctx);
-    }
-    if (isRiskEvent(rawEvent)) {
-      return this.updateRisk(task, rawEvent, input, patch, ctx);
-    }
-    const event = rawEvent;
-    const target = assertTaskTransition(task, event);
-
-    const tokenApplies =
-      event === 'cancel' ? cancelNeedsToken(task.status) : TASK_EVENT_NEEDS_TOKEN[event];
-    if (tokenApplies) assertClaimToken(task, input.claim_token);
-
-    // 三种“非正常结束/暂停”都必须写原由：阻塞、失败、取消。
-    // 没有原由的任务在任务树里只是一个状态词，用户无法判断该不该继续或忽略它。
-    if ((event === 'block' || event === 'fail' || event === 'cancel') && !input.reason?.trim()) {
-      throw new AppError('INVALID_ARGUMENT', 'REASON_REQUIRED', { event });
-    }
-
-    if (event === 'complete') {
-      patch.evidence_json = JSON.stringify(this.resolveEvidence(task, input.evidence_card_ids));
-    }
-    // 状态时间线：每个事件写自己的时刻，而不是依赖 updated_at。
-    // 原因：updated_at 会被改名/改优先级等无关操作刷新，无法回答“什么时候开始干的”。
-    if (event === 'start') patch.started_at = now;
-    if (event === 'block') {
-      patch.blocked_reason = input.reason!.trim();
-      patch.blocked_at = now;
-    }
-    // unblock 刻意不改写 blocked_at：它记录“最近一次被阻塞”的历史，
-    // 页面需要用它算阻塞时长；清空会让这段历史丢失。
-    if (event === 'complete') patch.completed_at = now;
-    if (event === 'fail') {
-      patch.fail_reason = input.reason!.trim();
-      patch.failed_at = now;
-    }
-    // cancel 可能从 draft/pending 直接发生（没有 claim_token），
-    // 因此不能只在 claim 路径写时间，必须在这里兜底。
-    // 原因也要落库：与 blocked/fail 一致，终态必须能回答“为什么”。
-    if (event === 'cancel') {
-      patch.cancelled_at = now;
-      patch.cancel_reason = input.reason!.trim();
-    }
-
-    const isTerminal = target === 'done' || target === 'failed' || target === 'cancelled';
-    txImmediate(this.db, () => {
-      this.tasks.updateFields(task.id, {
-        ...patch,
-        status: target,
-        ...(isTerminal
-          ? {
-              claim_token: null,
-              claim_expires_at: null,
-              // 每次进入终态都重新产生一条结束通知：即使任务以前结束过又被人改写状态，
-              // 用户也需要看到“这次真的结束了”，不能沿用上一次的已读时间。
-              end_notice_read_at: null,
-              // 终态不再需要“暂缓”标记；留着会让已取消/已完成的任务仍显示“已暂缓”。
-              defer_reason: null,
-              deferred_at: null,
-              deferred_until: null,
-            }
-          : { claim_token: task.claim_token, claim_expires_at: task.claim_expires_at }),
-        updated_at: now,
-      });
-      this.events.task(task.id, event, ctx.actorLabel, { reason: input.reason ?? null }, now);
-      this.channels.touch(task.channel_id, now);
-    });
-    this.audit.record(ctx, `task.${event}`, 'ok', 'task', task.id, {
-      from: task.status,
-      to: target,
-    });
-    return this.toView(this.tasks.get(task.id)!);
+    return applyTaskUpdate(this.runtime, input, ctx);
   }
 
   release(input: TaskReleaseInput, ctx: Ctx): TaskView {
-    const task = this.requireTask(input.task_id);
-    const now = this.clock.now();
-    if (!this.tasks.release(task.id, input.claim_token, now)) {
-      throw new AppError('FORBIDDEN', 'CLAIM_TOKEN_MISMATCH', { guard: 'G-T02' });
-    }
-    this.events.task(task.id, 'released', ctx.actorLabel, { reason: input.reason }, now);
-    this.audit.record(ctx, 'task.release', 'ok', 'task', task.id, { reason: input.reason });
-    return this.toView(this.tasks.get(task.id)!);
-  }
-
-  /**
-   * 暂缓/取消暂缓：只改覆盖层，不改状态。
-   *
-   * 为什么允许 draft：用户可能先记一条草稿、决定“这周不做”，
-   * 但草稿还没提交，用 blocked 会伪造“有人认领过”。
-   * 为什么不允许 in_progress：正在执行的任务想暂停应走 block，
-   * 否则会出现“正在做”和“已暂缓”同时成立。
-   */
-  private updateDeferral(
-    task: Task,
-    event: TaskDeferEvent,
-    input: TaskUpdateInput,
-    patch: Partial<Task>,
-    ctx: Ctx,
-  ): TaskView {
-    const now = this.clock.now();
-
-    if (event === 'defer') {
-      if (task.status !== 'draft' && task.status !== 'pending') {
-        throw new AppError('CONFLICT', 'TASK_STATE_INVALID', {
-          guard: 'G-T01',
-          event,
-          from: task.status,
-          allowed_from: ['draft', 'pending'],
-        });
-      }
-      const reason = input.reason?.trim();
-      if (!reason) {
-        throw new AppError('INVALID_ARGUMENT', 'REASON_REQUIRED', { event });
-      }
-      const until = input.deferred_until ? Date.parse(input.deferred_until) : null;
-
-      txImmediate(this.db, () => {
-        this.tasks.updateFields(task.id, {
-          // 覆盖层事件不改变 status，但允许同一次调用顺带改标题/优先级等字段。
-          // 契约 04 明确 event 与 patch 可以同时给出；静默丢弃会让调用方以为改成功了。
-          ...patch,
-          defer_reason: reason,
-          deferred_at: now,
-          deferred_until: until,
-          updated_at: now,
-        });
-        this.events.task(
-          task.id,
-          'deferred',
-          ctx.actorLabel,
-          { reason, deferred_until: until === null ? null : new Date(until).toISOString() },
-          now,
-        );
-        this.channels.touch(task.channel_id, now);
-      });
-      this.audit.record(ctx, 'task.defer', 'ok', 'task', task.id, {
-        reason,
-        deferred_until: until === null ? null : new Date(until).toISOString(),
-      });
-      return this.toView(this.tasks.get(task.id)!);
-    }
-
-    if (!task.defer_reason) {
-      throw new AppError('CONFLICT', 'TASK_NOT_DEFERRED', { task_id: task.id });
-    }
-    txImmediate(this.db, () => {
-      this.tasks.updateFields(task.id, {
-        ...patch,
-        defer_reason: null,
-        deferred_at: null,
-        deferred_until: null,
-        updated_at: now,
-      });
-      this.events.task(task.id, 'undeferred', ctx.actorLabel, undefined, now);
-      this.channels.touch(task.channel_id, now);
-    });
-    this.audit.record(ctx, 'task.undefer', 'ok', 'task', task.id);
-    return this.toView(this.tasks.get(task.id)!);
-  }
-
-  /**
-   * 标记/解除“隐患”（带病完成的风险留档）。
-   *
-   * 与 defer 相反：
-   * - 可作用于任何状态，包括 done/failed——复盘时补记“当时是带隐患交付”；
-   * - 不改 status，也不需要 claim_token：任务完成后令牌早已释放，
-   *   若仍要求令牌，事后复盘就无法标记；
-   * - 解除只写 risk_resolved_at，不删 note 与原始标记时间：判断留档，
-   *   列表仍能按“曾经带隐患”筛出历史。
-   */
-  private updateRisk(
-    task: Task,
-    event: TaskRiskEvent,
-    input: TaskUpdateInput,
-    patch: Partial<Task>,
-    ctx: Ctx,
-  ): TaskView {
-    const now = this.clock.now();
-
-    if (event === 'flag_risk') {
-      const note = input.reason?.trim();
-      if (!note) {
-        throw new AppError('INVALID_ARGUMENT', 'REASON_REQUIRED', { event });
-      }
-      txImmediate(this.db, () => {
-        this.tasks.updateFields(task.id, {
-          // 同一次调用允许顺带改标题/优先级等字段；覆盖层事件不应吞掉 patch。
-          ...patch,
-          risk_note: note,
-          risk_flagged_at: now,
-          // 重新标记表示风险再次出现（或上次解除判断有误），
-          // 把解除时间与旧结论一起清掉：新一轮风险需要新的复盘。
-          risk_resolved_at: null,
-          risk_resolution: null,
-          updated_at: now,
-        });
-        this.events.task(task.id, 'risk_flagged', ctx.actorLabel, { reason: note }, now);
-        this.channels.touch(task.channel_id, now);
-      });
-      this.audit.record(ctx, 'task.flag_risk', 'ok', 'task', task.id, { status: task.status });
-      return this.toView(this.tasks.get(task.id)!);
-    }
-
-    if (!task.risk_note) {
-      throw new AppError('CONFLICT', 'TASK_RISK_NOT_FLAGGED', { task_id: task.id });
-    }
-    if (task.risk_resolved_at !== null) {
-      throw new AppError('CONFLICT', 'TASK_RISK_ALREADY_RESOLVED', { task_id: task.id });
-    }
-    // 解除说明可选：允许只点“解除”，也允许顺手写一句复盘结论
-    //（例如“风险未发生，判断正确”），两种都要能落库。
-    const resolution = input.reason?.trim() || null;
-    txImmediate(this.db, () => {
-      this.tasks.updateFields(task.id, {
-        ...patch,
-        risk_resolved_at: now,
-        // 结论落任务行，Web 详情与复盘列表才能直接读到；
-        // 同时仍写进事件 payload，保留不可变的审计流水。
-        risk_resolution: resolution,
-        updated_at: now,
-      });
-      this.events.task(
-        task.id,
-        'risk_unflagged',
-        ctx.actorLabel,
-        { note: task.risk_note, resolution },
-        now,
-      );
-      this.channels.touch(task.channel_id, now);
-    });
-    this.audit.record(ctx, 'task.unflag_risk', 'ok', 'task', task.id, { resolution });
-    return this.toView(this.tasks.get(task.id)!);
+    return applyTaskRelease(this.runtime, input, ctx);
   }
 
   move(taskId: string, newParentId: string | null, ctx: Ctx): TaskView {
@@ -710,61 +382,15 @@ export class TaskService {
 
   /** 租约回收 worker 调用；返回被回收的数量。 */
   expireLeases(now: number): number {
-    return this.tasks.expireLeases(now);
+    return expireTaskLeases(this.tasks, now);
   }
 
   private assertDepth(task: Task, newParent: Task | null): void {
-    const subtree = this.tasks.findSubtree(task.id);
-    const taskDepth = depthOf(task.path);
-    const maxDescendantDepth = Math.max(...subtree.map((node) => depthOf(node.path)));
-    const newDepth = (newParent ? depthOf(newParent.path) : 0) + 1;
-    if (newDepth + (maxDescendantDepth - taskDepth) > this.maxDepth) {
-      throw new AppError('INVALID_ARGUMENT', 'TASK_DEPTH_EXCEEDED', { max_depth: this.maxDepth });
-    }
-  }
-
-  private resolveEvidence(task: Task, provided: string[] | undefined): string[] {
-    if (provided?.length) {
-      const cards = this.cards.findByIds(provided);
-      if (cards.length !== provided.length) {
-        const found = new Set(cards.map((card) => card.id));
-        throw new AppError('INVALID_ARGUMENT', 'EVIDENCE_CARD_NOT_FOUND', {
-          missing: provided.filter((id) => !found.has(id)),
-        });
-      }
-      for (const card of cards) assertEvidenceCard(task, card);
-      return provided;
-    }
-
-    const linked = this.cards.findEvidenceCards(task.id).filter(isEvidenceCard);
-    if (linked.length === 0) {
-      throw new AppError('EVIDENCE_REQUIRED', 'EVIDENCE_REQUIRED', { guard: 'G-T08' });
-    }
-    return linked.map((card) => card.id);
-  }
-
-  private buildPatch(input: TaskUpdateInput): Partial<Task> {
-    const patch: Partial<Task> = {};
-    if (!input.patch) return patch;
-    if (input.patch.title !== undefined) patch.title = input.patch.title;
-    if (input.patch.description_md !== undefined) patch.description_md = input.patch.description_md;
-    // null 与空串都落到 NULL：分类是单值列，空字符串会让任务树显示一个空标签。
-    if (input.patch.category !== undefined) patch.category = input.patch.category?.trim() || null;
-    if (input.patch.priority !== undefined) patch.priority = input.patch.priority;
-    if (input.patch.assignee !== undefined) patch.assignee = input.patch.assignee;
-    if (input.patch.tags !== undefined) {
-      patch.tags_json = input.patch.tags.length ? JSON.stringify(input.patch.tags) : null;
-    }
-    if (input.patch.due_at !== undefined) {
-      patch.due_at = input.patch.due_at === null ? null : Date.parse(input.patch.due_at);
-    }
-    return patch;
+    assertTaskDepth(this.runtime, task, newParent);
   }
 
   private requireTask(id: string): Task {
-    const task = this.tasks.get(id);
-    if (!task) throw new AppError('NOT_FOUND', 'TASK_NOT_FOUND', { task_id: id });
-    return task;
+    return requireTask(this.tasks, id);
   }
 
   private toView(
@@ -773,45 +399,6 @@ export class TaskService {
     includeDescription = true,
     unreadCount?: number,
   ): TaskView {
-    const key = channelKey ?? this.channels.getOrThrow(task.channel_id).channel_key;
-    // 单任务详情/写操作响应没批量上下文，这里补一次计数；
-    // 列表与树已经批量算好，传进来避免重复查询。
-    const count = unreadCount ?? this.cards.countUnreadForTask(task.id);
-    return toTaskView(task, key, includeDescription, count);
-  }
-}
-
-function depthOf(path: string): number {
-  return path.split('/').filter(Boolean).length;
-}
-
-/** 终态判定只在服务内使用；与 task-repo 的视图派生保持同一组状态。 */
-function isTerminalTaskStatus(status: TaskStatus): boolean {
-  return status === 'done' || status === 'failed' || status === 'cancelled';
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function isEvidenceCard(card: Card): boolean {
-  if (card.status === 'archived') return false;
-  if (card.type === 'status') return Boolean(card.summary?.trim());
-  if (card.type === 'artifact') return Boolean(card.artifact_url?.trim());
-  return false;
-}
-
-function assertEvidenceCard(task: Task, card: Card): void {
-  if (card.task_id !== task.id) {
-    throw new AppError('INVALID_ARGUMENT', 'EVIDENCE_INVALID', {
-      card_id: card.id,
-      reason: 'not_linked_to_task',
-    });
-  }
-  if (!isEvidenceCard(card)) {
-    throw new AppError('INVALID_ARGUMENT', 'EVIDENCE_INVALID', {
-      card_id: card.id,
-      reason: 'must_be_status_with_summary_or_artifact_with_url',
-    });
+    return taskToView(this.runtime, task, channelKey, includeDescription, unreadCount);
   }
 }

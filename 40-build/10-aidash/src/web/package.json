@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/the50w/aidash.git",
+    "directory": "40-build/10-aidash/src/web"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

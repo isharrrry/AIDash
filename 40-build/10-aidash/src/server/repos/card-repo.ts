@@ -31,6 +31,14 @@ export interface CardListFilter {
    * 需要给用户一个“历史遗留”入口，而不是让它们凭空消失。
    */
   unassigned?: boolean;
+  /**
+   * 列表是否返回完整正文（默认 false）。
+   *
+   * 默认只取预览所需的三列（body/background/goal），并把
+   * research/decision/message 投影成 NULL；service 再据此计算 preview_md、
+   * 把正文列置 null。确需全文的调用方（任务信息流、手工排查）显式开启。
+   */
+  includeBody?: boolean;
   page?: number;
   page_size?: number;
   sort?: 'created_at' | 'updated_at' | 'priority' | 'due_at';
@@ -43,6 +51,77 @@ const SORT_SQL: Record<NonNullable<CardListFilter['sort']>, string> = {
   priority: "CASE c.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END",
   due_at: 'c.due_at',
 };
+
+/**
+ * card 表的显式投影白名单。
+ *
+ * 为什么不用 `SELECT c.*`：一页最多 200 张卡，任一正文列都可能接近 64 KB；
+ * 整行取回会把内存和响应体一起撑大，而且以后新增列会被列表无意带出。
+ * 列清单显式写死后，新增字段必须同步决定“列表是否需要它”。
+ */
+const CARD_COLUMNS = [
+  'id',
+  'channel_id',
+  'type',
+  'status',
+  'priority',
+  'title',
+  'body_md',
+  'background_md',
+  'goal_md',
+  'research_md',
+  'decision_md',
+  'message_md',
+  'summary',
+  'detail_md',
+  'severity',
+  'recipient',
+  'channel_kind',
+  'reason',
+  'handoff_state',
+  'options_json',
+  'allow_free_text',
+  'default_action',
+  'due_at',
+  'answer_json',
+  'answered_at',
+  'artifact_url',
+  'artifact_kind',
+  'links_json',
+  'result',
+  'suggestions_json',
+  'kb_refs_json',
+  'confidence',
+  'blocking',
+  'task_id',
+  'enrichment_status',
+  'enrichment_json',
+  'idempotency_key',
+  'created_by',
+  'created_at',
+  'updated_at',
+  'archived_at',
+] as const;
+
+/**
+ * 默认列表不投影的重字段。
+ *
+ * body/background/goal 仍要取回：service 需要它们计算 preview_md，然后再把
+ * 这三个字段在响应里置 null。research/decision/message 不参与预览，直接投影成
+ * NULL，连内存都不占。截断规则只在 service 里维护，repo 不猜展示长度。
+ */
+const LIST_OMITTED_COLUMNS: ReadonlySet<string> = new Set([
+  'research_md',
+  'decision_md',
+  'message_md',
+]);
+
+function listColumns(includeBody: boolean): string {
+  return CARD_COLUMNS.map((column) => {
+    if (includeBody || !LIST_OMITTED_COLUMNS.has(column)) return `c.${column}`;
+    return `NULL AS ${column}`;
+  }).join(', ');
+}
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
@@ -215,6 +294,24 @@ export class CardRepo {
       .run(status, enrichmentJson, id);
   }
 
+  /**
+   * 启动时把上次进程留下的 running 拉回 pending。
+   *
+   * 增强任务在真正调用模型前会先把状态写成 running；进程崩溃/强杀后没有机会收尾，
+   * 而重试扫描只看 pending。不重置的话，这些卡会永远显示“分析中”且再也不会重试。
+   * 返回受影响行数，便于调用方（或测试）确认恢复确实发生。
+   */
+  resetRunningEnrichment(): number {
+    const result = this.db
+      .prepare(
+        `UPDATE card
+            SET enrichment_status = 'pending', enrichment_json = NULL
+          WHERE enrichment_status = 'running'`,
+      )
+      .run();
+    return result.changes;
+  }
+
   /** 列表与计数共用同一段 WHERE，避免分页总数与列表口径不一致。 */
   private buildWhere(filter: CardListFilter): { sql: string; params: unknown[] } {
     const where: string[] = [];
@@ -296,7 +393,8 @@ export class CardRepo {
 
     const rows = this.db
       .prepare(
-        `SELECT c.*, ch.channel_key, r.read_at AS read_at
+        `SELECT ${listColumns(filter.includeBody === true)},
+                ch.channel_key, r.read_at AS read_at
          FROM card c
          JOIN channel ch ON ch.id = c.channel_id
          LEFT JOIN card_read r ON r.card_id = c.id
@@ -440,14 +538,6 @@ export class CardRepo {
       ? "SELECT COUNT(*) AS n FROM card WHERE type = 'question' AND status = 'open' AND channel_id = ?"
       : "SELECT COUNT(*) AS n FROM card WHERE type = 'question' AND status = 'open'";
     return (this.db.prepare(sql).get(...(channelId ? [channelId] : [])) as { n: number }).n;
-  }
-
-  countByStatus(status: CardStatus): number {
-    return (
-      this.db.prepare('SELECT COUNT(*) AS n FROM card WHERE status = ?').get(status) as {
-        n: number;
-      }
-    ).n;
   }
 
   /** 保留策略：只找“仍未归档且早于阈值”的卡，归档动作由 service 执行并写事件。 */

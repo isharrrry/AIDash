@@ -7,12 +7,7 @@ import { useAsync } from '../hooks/useAsync';
 import { formatAbsolute, formatRelative, fromLocalInput, parseTagInput, shortId, toLocalInput } from '../lib/format';
 import { openCard } from '../lib/router';
 import { buildParentOptions, isSelfOrDescendant } from '../lib/task-tree';
-import {
-  ALLOWED_EVENTS,
-  EVENT_LABELS,
-  REASON_EVENTS,
-  eventNeedsToken,
-} from '../lib/task-events';
+import { EVENT_LABELS, REASON_EVENTS, eventNeedsToken } from '../lib/task-events';
 import type { TaskEvent } from '../lib/task-events';
 import {
   PriorityBadge,
@@ -23,7 +18,10 @@ import {
 } from './Badge';
 import { ErrorBox, Loading } from './Feedback';
 import { Markdown } from './Markdown';
-import { MarkdownEditor } from './MarkdownEditor';
+import { TaskDetailEditor } from './TaskDetailEditor';
+import { TaskDetailEvents } from './TaskDetailEvents';
+import { TaskDetailMoveCopy } from './TaskDetailMoveCopy';
+import { TaskDetailTimeline } from './TaskDetailTimeline';
 import { TaskFeed } from './TaskFeed';
 import { useToast } from './Toast';
 
@@ -191,9 +189,14 @@ export function TaskDetail({
     if (event !== 'submit') {
       // 覆盖层事件（暂缓、隐患）不改变状态，不能沿用“推进为”的文案，
       // 否则用户会以为任务换了状态。
-      const confirmText = OVERLAY_EVENTS.includes(event)
-        ? `确认「${EVENT_LABELS[event]}」？`
-        : `确认将任务状态推进为「${EVENT_LABELS[event]}」？`;
+      // retry 也不是“推进”：它把 failed 任务放回待认领队列，说“推进为重新排队”很别扭，
+      // 且容易让人以为任务在向前走；这里单独给出“重新排队”的确认文案。
+      const confirmText =
+        event === 'retry'
+          ? '确认把任务重新排队？'
+          : OVERLAY_EVENTS.includes(event)
+            ? `确认「${EVENT_LABELS[event]}」？`
+            : `确认将任务状态推进为「${EVENT_LABELS[event]}」？`;
       if (!window.confirm(confirmText)) return;
     }
 
@@ -273,8 +276,6 @@ export function TaskDetail({
       });
     }
   };
-
-  const timeline = data ? timelineEntries(data) : [];
 
   return (
     <aside className="task-detail task-detail-dock" aria-label="任务详情" ref={dockRef}>
@@ -379,76 +380,7 @@ export function TaskDetail({
 
           {data.description_md ? <Markdown source={data.description_md} /> : null}
 
-          <section>
-            <h4>状态时间线</h4>
-            {timeline.length > 0 ? (
-              <ol className="timeline">
-                {timeline.map((entry) => (
-                  <li key={`${entry.label}-${entry.value}`}>
-                    <span className="timeline-label">{entry.label}</span>
-                    <span className="timeline-time" title={entry.value}>
-                      {formatAbsolute(entry.value)}
-                    </span>
-                    <span className="muted small">{formatRelative(entry.value)}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="muted small">暂无状态时间线数据。</p>
-            )}
-            {data.blocked_reason ? (
-              <div className="reason-box">
-                <strong>阻塞原因</strong>
-                <p>{data.blocked_reason}</p>
-              </div>
-            ) : null}
-            {data.fail_reason ? (
-              <div className="reason-box reason-box-danger">
-                <strong>失败原因</strong>
-                <p>{data.fail_reason}</p>
-              </div>
-            ) : null}
-            {/* 取消也必须有原由：否则看板上只剩一个“已取消”，无法判断是重复、误建还是判断错误。 */}
-            {data.cancel_reason ? (
-              <div className="reason-box">
-                <strong>取消原因</strong>
-                <p>{data.cancel_reason}</p>
-              </div>
-            ) : null}
-            {data.defer_reason ? (
-              <div className="reason-box">
-                <strong>暂缓 / 排期</strong>
-                <p>{data.defer_reason}</p>
-                <p className="muted small">
-                  {data.deferred_until
-                    ? `计划恢复：${formatAbsolute(data.deferred_until)}`
-                    : '未设定计划恢复时间'}
-                  {data.deferred_at ? ` · 标记于 ${formatAbsolute(data.deferred_at)}` : ''}
-                </p>
-              </div>
-            ) : null}
-            {/*
-              隐患不随任务完成而消失：它回答的是“这次收口打了什么折扣”。
-              解除后保留 note 原文，只把状态改成已解除，复盘才能对照当时的判断。
-            */}
-            {data.risk_note ? (
-              <div className={data.risk_resolved_at ? 'reason-box' : 'reason-box reason-box-danger'}>
-                <strong>{data.risk_resolved_at ? '隐患（已解除）' : '隐患（未解除）'}</strong>
-                <p>{data.risk_note}</p>
-                {data.risk_resolution ? (
-                  <p className="muted small">复盘结论：{data.risk_resolution}</p>
-                ) : null}
-                <p className="muted small">
-                  {data.risk_flagged_at
-                    ? `标记于 ${formatAbsolute(data.risk_flagged_at)}`
-                    : '标记时间未知'}
-                  {data.risk_resolved_at
-                    ? ` · 解除于 ${formatAbsolute(data.risk_resolved_at)}`
-                    : ' · 仍未解除'}
-                </p>
-              </div>
-            ) : null}
-          </section>
+          <TaskDetailTimeline task={data} />
 
           {data.evidence_ids.length > 0 ? (
             <section>
@@ -479,222 +411,51 @@ export function TaskDetail({
             reloadNonce={feedNonce}
           />
 
-          <section ref={editSectionRef}>
-            <div className="panel-header">
-              <h4>编辑字段</h4>
-              <button type="button" className="btn btn-small" onClick={toggleEditing}>
-                {editing ? '收起编辑' : '编辑'}
-              </button>
-            </div>
+          <TaskDetailEditor
+            editing={editing}
+            editSectionRef={editSectionRef}
+            title={title}
+            category={category}
+            priority={priority}
+            assignee={assignee}
+            tags={tags}
+            dueAt={dueAt}
+            description={description}
+            busy={busy}
+            editorBusy={editorBusy}
+            onToggle={toggleEditing}
+            onSave={() => void savePatch(data)}
+            onTitleChange={setTitle}
+            onCategoryChange={setCategory}
+            onPriorityChange={setPriority}
+            onAssigneeChange={setAssignee}
+            onTagsChange={setTags}
+            onDueAtChange={setDueAt}
+            onDescriptionChange={setDescription}
+            onEditorBusyChange={setEditorBusy}
+          />
 
-            {editing ? (
-              <div className="form-grid">
-                <label className="field">
-                  <span>标题</span>
-                  <input value={title} onChange={(event) => setTitle(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>分类</span>
-                  <input
-                    value={category}
-                    maxLength={40}
-                    placeholder="如 功能 / 缺陷 / 维护（留空表示未分类）"
-                    onChange={(event) => setCategory(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>优先级</span>
-                  <select
-                    value={priority}
-                    onChange={(event) => setPriority(event.target.value as Priority)}
-                  >
-                    <option value="P0">P0</option>
-                    <option value="P1">P1</option>
-                    <option value="P2">P2</option>
-                    <option value="P3">P3</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>负责人</span>
-                  <input
-                    value={assignee}
-                    placeholder="留空表示未指派"
-                    onChange={(event) => setAssignee(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>标签（逗号分隔）</span>
-                  <input value={tags} onChange={(event) => setTags(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>到期时间</span>
-                  <input
-                    type="datetime-local"
-                    value={dueAt}
-                    onChange={(event) => setDueAt(event.target.value)}
-                  />
-                </label>
-                <div className="field field-full">
-                  <MarkdownEditor
-                    value={description}
-                    onChange={setDescription}
-                    rows={10}
-                    disabled={busy !== null}
-                    onBusyChange={setEditorBusy}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-small"
-                  disabled={busy !== null || editorBusy}
-                  onClick={() => void savePatch(data)}
-                >
-                  {busy === 'save' ? '保存中…' : editorBusy ? '图片处理中…' : '保存字段'}
-                </button>
-              </div>
-            ) : null}
-          </section>
+          <TaskDetailEvents
+            task={data}
+            claimToken={claimToken}
+            reason={reason}
+            deferUntil={deferUntil}
+            evidenceInput={evidenceInput}
+            busy={busy}
+            onReasonChange={setReason}
+            onDeferUntilChange={setDeferUntil}
+            onEvidenceInputChange={setEvidenceInput}
+            onSubmit={(event) => void submitEvent(data, event)}
+          />
 
-          <section>
-            <h4>状态事件</h4>
-            {!claimToken &&
-            ALLOWED_EVENTS[data.status].some((event) => eventNeedsToken(event, data.status)) ? (
-              <p className="warn-text">
-                当前会话没有 claim_token。需要令牌的事件已禁用；可在任务行用同一 harness_id
-                续租取回令牌，或让原认领方处理。
-              </p>
-            ) : null}
-
-            <label className="field">
-              <span>原因（block / fail / defer / 标记隐患 必填；解除隐患可留空）</span>
-              <textarea
-                rows={3}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>计划恢复时间（defer 可选）</span>
-              <input
-                type="datetime-local"
-                value={deferUntil}
-                onChange={(event) => setDeferUntil(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>证据卡 ID（complete 用，留空则复用已关联卡）</span>
-              <input
-                value={evidenceInput}
-                placeholder="cd_xxx, cd_yyy；留空自动查找任务下的 status/artifact 卡"
-                onChange={(event) => setEvidenceInput(event.target.value)}
-              />
-            </label>
-
-            <div className="inline wrap">
-              {ALLOWED_EVENTS[data.status].length === 0 ? (
-                <span className="muted">终态任务没有状态事件；仍可补记或解除隐患。</span>
-              ) : (
-                <>
-                  {ALLOWED_EVENTS[data.status].map((event) => {
-                    const needsToken = eventNeedsToken(event, data.status);
-                    const disabled = busy !== null || (needsToken && !claimToken);
-                    return (
-                      <button
-                        key={event}
-                        type="button"
-                        className={
-                          event === 'fail' || event === 'cancel'
-                            ? 'btn btn-small btn-danger'
-                            : 'btn btn-small'
-                        }
-                        disabled={disabled}
-                        onClick={() => void submitEvent(data, event)}
-                      >
-                        {busy === `event:${event}` ? '提交中…' : EVENT_LABELS[event]}
-                      </button>
-                    );
-                  })}
-                  {/*
-                    undefer 只在确实存在暂缓标记时出现。不放进 ALLOWED_EVENTS：
-                    那张表按状态生成，而“能否取消暂缓”取决于覆盖层是否有值。
-                  */}
-                  {data.defer_reason ? (
-                    <button
-                      type="button"
-                      className="btn btn-small btn-ghost"
-                      disabled={busy !== null}
-                      onClick={() => void submitEvent(data, 'undefer')}
-                    >
-                      {busy === 'event:undefer' ? '提交中…' : EVENT_LABELS.undefer}
-                    </button>
-                  ) : null}
-                </>
-              )}
-              {/*
-                隐患是覆盖层，任何状态（包括 done/failed/cancelled）都能标记或解除，
-                所以不放进按状态生成的 ALLOWED_EVENTS。终态任务最常见的场景恰恰是
-                “已经完成，但回头发现留了坑”，按钮必须仍然可用。
-              */}
-              {data.risk_note && !data.risk_resolved_at ? (
-                <button
-                  type="button"
-                  className="btn btn-small btn-ghost"
-                  disabled={busy !== null}
-                  onClick={() => void submitEvent(data, 'unflag_risk')}
-                >
-                  {busy === 'event:unflag_risk' ? '提交中…' : EVENT_LABELS.unflag_risk}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-small btn-danger"
-                  disabled={busy !== null}
-                  onClick={() => void submitEvent(data, 'flag_risk')}
-                >
-                  {busy === 'event:flag_risk' ? '提交中…' : EVENT_LABELS.flag_risk}
-                </button>
-              )}
-            </div>
-          </section>
-
-          <section>
-            <h4>移动 / 复制</h4>
-            <label className="field">
-              <span>新父任务（下拉选择，已排除自身与后代）</span>
-              <select
-                value={parentId}
-                onChange={(event) => setParentId(event.target.value)}
-              >
-                <option value="">（根节点）</option>
-                {parentOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label} · {shortId(option.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="muted small">
-              也可以直接在左侧任务树里按住任务名拖动到目标任务上，成为它的子任务。
-            </p>
-            <div className="inline wrap">
-              <button
-                type="button"
-                className="btn btn-small"
-                disabled={busy !== null}
-                onClick={() => void move(data)}
-              >
-                {busy === 'move' ? '移动中…' : '移动到所选父节点'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-small btn-ghost"
-                disabled={busy !== null}
-                onClick={() => void copy(data)}
-              >
-                {busy === 'copy' ? '复制中…' : '复制子树到所选父节点'}
-              </button>
-            </div>
-          </section>
+          <TaskDetailMoveCopy
+            parentId={parentId}
+            parentOptions={parentOptions}
+            busy={busy}
+            onParentChange={setParentId}
+            onMove={() => void move(data)}
+            onCopy={() => void copy(data)}
+          />
 
           {formError ? (
             <div className="error-box" role="alert">
@@ -705,40 +466,4 @@ export function TaskDetail({
       ) : null}
     </aside>
   );
-}
-
-interface TimelineEntry {
-  label: string;
-  value: string;
-}
-
-/**
- * 状态时间线只列“真正发生过”的节点。
- *
- * created_at / updated_at 一定有值；其余字段由 task-service 在状态事件里写入，
- * 为空表示该事件没发生过。不能拿 updated_at 去补，否则会伪造一个不存在的时间点。
- */
-function timelineEntries(task: TaskView): TimelineEntry[] {
-  const candidates: Array<{ label: string; value: string | null }> = [
-    { label: '创建', value: task.created_at },
-    { label: '认领', value: task.claimed_at },
-    { label: '开始', value: task.started_at },
-    { label: '阻塞', value: task.blocked_at },
-    { label: '暂缓', value: task.deferred_at },
-    { label: '隐患标记', value: task.risk_flagged_at },
-    { label: '隐患解除', value: task.risk_resolved_at },
-    { label: '完成', value: task.completed_at },
-    { label: '失败', value: task.failed_at },
-    { label: '取消', value: task.cancelled_at },
-    { label: '更新', value: task.updated_at },
-  ];
-
-  const entries: TimelineEntry[] = [];
-  for (const candidate of candidates) {
-    if (candidate.value) entries.push({ label: candidate.label, value: candidate.value });
-  }
-  // 不能按固定生命周期顺序展示：隐患允许在任务完成/取消之后补记，
-  // 固定顺序会把“完成后的隐患标记”排到“完成”上方，读起来像时间倒流。
-  // ISO 时间可直接字典序比较；同刻保持上面的稳定顺序。
-  return entries.sort((a, b) => a.value.localeCompare(b.value));
 }

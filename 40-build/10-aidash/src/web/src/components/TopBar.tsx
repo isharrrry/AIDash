@@ -23,6 +23,7 @@ export function TopBar({
   routeName,
   connection,
   channels,
+  channelsTotal,
   channelsLoading,
   currentChannelKey,
   currentProject,
@@ -34,6 +35,8 @@ export function TopBar({
   routeName: RouteName;
   connection: ConnectionState;
   channels: ChannelView[];
+  /** 服务端通道总数；大于 channels.length 时通道树只覆盖了一页。 */
+  channelsTotal: number;
   channelsLoading: boolean;
   currentChannelKey: string;
   /** 当前主对话聚焦。与 currentChannelKey 互斥，由 App 保证。 */
@@ -73,6 +76,7 @@ export function TopBar({
           {/* 决策台/任务树页面里的通道条已合并到这里，全站只有这一个切换入口。 */}
           <ChannelTree
             channels={channels}
+            total={channelsTotal}
             currentChannelKey={currentChannelKey}
             currentProject={currentProject}
             loading={channelsLoading}

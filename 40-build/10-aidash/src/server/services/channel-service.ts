@@ -119,6 +119,23 @@ export class ChannelService {
     return channel;
   }
 
+  /**
+   * 批量取通道 key，供列表/摘要填视图。
+   *
+   * 缺失的 id 直接抛错而不是返回空串：channel_id 有外键约束，
+   * 查不到说明数据已损坏；静默返回空串会让界面显示一条“无归属”记录。
+   */
+  keysById(ids: string[]): Map<string, string> {
+    const unique = [...new Set(ids)];
+    const keys = this.channels.findKeysByIds(unique);
+    for (const id of unique) {
+      if (!keys.has(id)) {
+        throw new AppError('NOT_FOUND', 'CHANNEL_NOT_FOUND', { channel_id: id });
+      }
+    }
+    return keys;
+  }
+
   /** 发卡/建任务后刷新活跃时间；列表按 updated_at 排序靠它保持准。 */
   touch(id: string, now: number): void {
     this.channels.updateMeta(id, { updated_at: now });
@@ -186,13 +203,6 @@ export class ChannelService {
     return toChannelView(this.channels.get(channel.id)!, now, this.offlineThresholdMs);
   }
 
-  /** 物化 key 的三段式：host/project/topic；不足三段时 project/topic 留空。 */
-  static keyFor(host: string, project: string, topic: string): string {
-    return [host, project, topic]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join('/');
-  }
 }
 
 export function parseChannelKey(key: string): {
@@ -224,7 +234,6 @@ export function toChannelView(
   return {
     id: row.id,
     channel_key: row.channel_key,
-    key: row.channel_key,
     title: row.title,
     alias: row.alias,
     name: row.title,

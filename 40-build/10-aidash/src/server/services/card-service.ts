@@ -50,6 +50,34 @@ export interface CardServiceDeps {
 const ENRICHABLE: ReadonlySet<string> = new Set(['question', 'suggestion']);
 
 /**
+ * 列表预览的最大字符数。
+ *
+ * 为什么在服务层截断而不是 SQL substr：
+ * - 预览来源优先级（body → background → goal）是业务规则，放 service 才能单测；
+ * - 展示长度会随 UI 调整，repo 应该只负责取列，不能把产品参数写进 SQL。
+ */
+const PREVIEW_MAX_CHARS = 240;
+
+/** 列表预览：取第一个非空的正文来源，保留 Markdown 原文并截断。 */
+export function cardPreviewMd(
+  card: Pick<Card, 'body_md' | 'background_md' | 'goal_md'>,
+): string | null {
+  for (const raw of [card.body_md, card.background_md, card.goal_md]) {
+    const text = raw?.trim();
+    if (text) return text.slice(0, PREVIEW_MAX_CHARS);
+  }
+  return null;
+}
+
+export interface CardViewOptions {
+  /**
+   * 是否保留 body/background/goal/research/decision/message 六个重字段。
+   * 列表默认 false（只给 preview_md）；单卡详情、发卡回执等默认 true。
+   */
+  includeBody?: boolean;
+}
+
+/**
  * 卡片服务：六种类型的唯一写入口。
  *
  * 类型差异只体现在“字段映射”上；状态、幂等、脱敏、审计这些横切规则
@@ -98,6 +126,14 @@ export class CardService {
     // 防止未来新增内部调用方绕过 zod 直接构造输入。
     if (input.type !== 'question' && !input.task_id) {
       throw new AppError('INVALID_ARGUMENT', 'TASK_REQUIRED', { type: input.type });
+    }
+    // status/handoff 有各自的正文列；body_md 在这两类卡上不会被写入。
+    // schema 已经拒绝，这里再守一次，防止内部调用方绕过 zod 后又被静默丢弃。
+    if ((input.type === 'status' || input.type === 'handoff') && input.body_md != null) {
+      throw new AppError('INVALID_ARGUMENT', 'BODY_MD_NOT_SUPPORTED', {
+        type: input.type,
+        use: input.type === 'status' ? 'detail_md' : 'message_md',
+      });
     }
     if (input.task_id) this.assertTaskInChannel(input.task_id, channel.id);
     assertNoSecrets(collectText(input));
@@ -237,13 +273,17 @@ export class CardService {
   }
 
   list(filter: CardListFilter = {}): Page<CardView> {
+    const includeBody = filter.includeBody === true;
     const page = this.cards.list(filter);
     const sizes = this.artifactSizes(page.items.map((card) => card.id));
     return {
       ...page,
       items: page.items.map((card) =>
         // read_at 由 repo 的 LEFT JOIN 带回；这里只做时间格式转换。
-        toCardView(card, card.channel_key, sizes.get(card.id) ?? null, card.read_at),
+        // 列表默认把重字段置 null，只留 preview_md；要全文必须显式 includeBody。
+        toCardView(card, card.channel_key, sizes.get(card.id) ?? null, card.read_at, {
+          includeBody,
+        }),
       ),
     };
   }
@@ -260,10 +300,6 @@ export class CardService {
     this.requireCard(cardId);
     this.cards.markRead(cardId, this.clock.now());
     return this.toView(this.cards.get(cardId)!);
-  }
-
-  search(q: string, filter: Omit<CardListFilter, 'q'> = {}): Page<CardView> {
-    return this.list({ ...filter, q });
   }
 
   /**
@@ -303,6 +339,13 @@ export class CardService {
       answered_by: ctx.actorLabel,
       answered_at: new Date(now).toISOString(),
     };
+
+    // 回答文本与备注会长期留在卡片详情、批量回答结果与导出里；
+    // 与发卡正文共用同一套敏感模式扫描，避免令牌从 answer 入口绕过 post 检查。
+    assertNoSecrets({
+      free_text: stored.free_text ?? '',
+      note: stored.note ?? '',
+    });
 
     const applied = txImmediate(this.db, () => {
       const ok = this.cards.setAnswered(cardId, JSON.stringify(stored), now);
@@ -451,8 +494,12 @@ export class CardService {
     const sizes = this.artifactSizes(cards.map((card) => card.id));
     // 一次取回本组卡的已读时间，避免 digest 里逐卡查 card_read。
     const reads = this.cards.readAtFor(cards.map((card) => card.id));
+    // 摘要可能跨多个通道：一次批量取 key，避免逐卡 getOrThrow（N+1）。
+    const channelKeys = this.channels.keysById(
+      cards.map((card) => card.channel_id).filter((id): id is string => Boolean(id)),
+    );
     return cards.map((card) => {
-      const key = card.channel_id ? this.channels.getOrThrow(card.channel_id).channel_key : '';
+      const key = card.channel_id ? (channelKeys.get(card.channel_id) ?? '') : '';
       return toCardView(card, key, sizes.get(card.id) ?? null, reads.get(card.id) ?? null);
     });
   }
@@ -500,7 +547,9 @@ export function toCardView(
   channelKey: string,
   sizeBytes: number | null,
   readAt: number | null,
+  options: CardViewOptions = {},
 ): CardView {
+  const includeBody = options.includeBody ?? true;
   const enrichment = parseJson<EnrichmentView>(card.enrichment_json);
   return {
     id: card.id,
@@ -510,12 +559,14 @@ export function toCardView(
     status: card.status,
     priority: card.priority,
     title: card.title,
-    body_md: card.body_md,
-    background_md: card.background_md,
-    goal_md: card.goal_md,
-    research_md: card.research_md,
-    decision_md: card.decision_md,
-    message_md: card.message_md,
+    // includeBody=false 时六个重字段统一置 null；预览在置空之前从原始 card 计算。
+    body_md: includeBody ? card.body_md : null,
+    background_md: includeBody ? card.background_md : null,
+    goal_md: includeBody ? card.goal_md : null,
+    research_md: includeBody ? card.research_md : null,
+    decision_md: includeBody ? card.decision_md : null,
+    message_md: includeBody ? card.message_md : null,
+    preview_md: cardPreviewMd(card),
     summary: card.summary,
     detail_md: card.detail_md,
     severity: card.severity,

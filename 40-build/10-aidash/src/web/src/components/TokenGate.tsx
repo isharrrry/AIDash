@@ -22,7 +22,7 @@ export function TokenGate({
     event.preventDefault();
     const token = value.trim();
     if (!token) {
-      setError('请输入 AIDASH_TOKEN');
+      setError('请输入访问令牌（可以是一句短口令）');
       return;
     }
     setBusy(true);
@@ -36,7 +36,7 @@ export function TokenGate({
       const message = describeError(cause);
       setError(
         message.includes('UNAUTHORIZED') || message.includes('401')
-          ? '令牌无效或已过期，请检查 AIDASH_TOKEN'
+          ? '访问令牌无效，请检查后重试'
           : message,
       );
     } finally {
@@ -55,8 +55,9 @@ export function TokenGate({
         </div>
         <h1>连接你的决策面板</h1>
         <p className="muted">
-          输入服务的访问令牌。令牌只保存在本机 <code>localStorage['aidash.token']</code>，
-          请求时通过 <code>Authorization: Bearer</code> 头发送，不会出现在 URL 或日志里。
+          输入服务端设置的访问令牌（可以是一句短口令）。凭据只保存在本机{' '}
+          <code>localStorage['aidash.token']</code>，请求时通过{' '}
+          <code>Authorization: Bearer</code> 头发送，不会出现在 URL 或日志里。
         </p>
         <label className="field">
           <span>访问令牌</span>
@@ -74,7 +75,7 @@ export function TokenGate({
           {busy ? '验证中…' : '验证并进入'}
         </button>
         <p className="muted small">
-          令牌来自服务端环境变量 <code>AIDASH_TOKEN</code>。若尚未配置，请先在启动服务时设置。
+          凭据来自服务端环境变量 <code>AIDASH_TOKEN</code>。若尚未配置，请先在启动服务时设置。
         </p>
       </form>
     </div>

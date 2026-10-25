@@ -4,6 +4,7 @@ import type { Db } from './db/connection.js';
 import type { AssistantMemoryRepo } from './repos/assistant-memory-repo.js';
 import type { ChannelRepo } from './repos/channel-repo.js';
 import type { CardRepo } from './repos/card-repo.js';
+import type { MaterialRepo } from './repos/material-repo.js';
 import type { MemoryDigestRepo } from './repos/memory-digest-repo.js';
 import type { MemoryRepo } from './repos/memory-repo.js';
 import type { ReportRepo } from './repos/report-repo.js';
@@ -49,6 +50,8 @@ export interface AppContext {
     /** AIDash 自己的记忆（单行表），与按 project 分片的主对话记忆分开。 */
     assistantMemory: AssistantMemoryRepo;
     memoryDigest: MemoryDigestRepo;
+    /** 汇报素材：从任务/卡片等持久化记录汇总，不单独建快照表。 */
+    materials: MaterialRepo;
     reports: ReportRepo;
     artifacts: ArtifactRepo;
     harnesses: HarnessRepo;

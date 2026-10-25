@@ -3,6 +3,7 @@
 # 目录一旦搬迁，路径型规则会静默失效，明文令牌就可能被提交。
 token.txt
 *.token.txt
+*.token
 log.txt
 *.log
 .env
@@ -15,11 +16,24 @@ log.txt
 *.db-wal
 *.sqlite
 *.sqlite3
+*.db-journal
 /40-build/10-aidash/data/
 /40-build/10-aidash/backups/
 
+# 本机加密凭据（默认在 ~/.aidash；若 AIDASH_SECRET_DIR 指到仓库内也不入库）
+.aidash/
+secrets.json
+master.key
+
 # 值守壳本地配置（含端点与运行时参数，按人不同，不入库）
+# 两个名字都留：aidash-runner 是现名，aidash-watch 是兼容别名时期的旧名。
+# 只留新名会让老机器上的旧配置文件被提交——里面通常有端点地址。
+aidash-runner.json
 aidash-watch.json
+
+# 服务端本地配置。启动时禁止它包含任何凭据（config.ts 会直接报错），
+# 但路径/端口这类参数仍按人不同，一律不入库。按文件名匹配，不写目录前缀。
+aidash.config.json
 
 # ===== 构建产物 =====
 # dist 含服务端编译结果、Web 静态产物与 CLI 单文件，均由 pnpm 重建，不入库。
@@ -27,8 +41,16 @@ dist/
 coverage/
 node_modules/
 *.vsix
+obj/
+# .NET drawcode 的构建输出；runner 的 bin/ 是发布入口，不能忽略
+/80-derived/drawcode/bin/
+
+# E2E 失败截图：每次运行的现场快照，属于诊断产物，不入库。
+/50-verify/e2e/artifacts/
 
 # ===== 编辑器 / 系统 =====
+# Claude Code 本地设置可能含本机路径/权限，不入库
+.claude/settings.local.json
 .vscode/
 .idea/
 Thumbs.db

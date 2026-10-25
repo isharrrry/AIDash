@@ -38,11 +38,19 @@ export class EnrichmentService {
   private running = false;
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
+  /** 关机时中断在途 LLM 请求；重启服务时重新创建，已 abort 的 signal 不能复用。 */
+  private controller = new AbortController();
+  /** 当前 drain 循环；关机要等它把 catch 里的收尾写完再关库。 */
+  private drainPromise: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: EnrichmentDeps) {}
 
   start(): void {
     this.stopped = false;
+    this.controller = new AbortController();
+    // 崩溃恢复：上次进程死在 LLM 调用中途时，卡会永远停在 running，
+    // 而 schedulePending 只扫 pending——不重置就再也不会重试。
+    this.deps.cards.resetRunningEnrichment();
     // 崩溃恢复：把上次停在 pending 的卡拉回队列。
     this.schedulePending();
 
@@ -55,17 +63,44 @@ export class EnrichmentService {
 
   stop(): void {
     this.stopped = true;
+    this.controller.abort();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.queue.length = 0;
     this.queued.clear();
   }
 
+  /**
+   * 等当前 drain 跑完。
+   *
+   * stop() 只负责“不再接新活”，已经发出的 LLM 请求会在 abort 后抛出；
+   * runOne 的 catch 还要写 unavailable 与事件。关机路径必须等这一步结束再 db.close()，
+   * 否则收尾写库会撞上已关闭的连接。
+   */
+  async waitForIdle(): Promise<void> {
+    await this.drainPromise.catch(() => {
+      // runOne 已把业务失败收敛成 unavailable；这里只防“连收尾都失败”变成未处理拒绝。
+    });
+  }
+
   schedule(cardId: string): void {
     if (this.stopped || this.queued.has(cardId) || this.queue.length >= MAX_QUEUE) return;
     this.queued.add(cardId);
     this.queue.push(cardId);
-    void this.drain();
+    this.ensureDrain();
+  }
+
+  /**
+   * 启动（或复用）drain 循环。
+   *
+   * drain 是 async 函数，但函数体在第一个 await 之前会同步把 running 置为 true，
+   * 所以这里先看 running 再赋值，不会把正在跑的 promise 覆盖成提前 resolve 的空任务。
+   */
+  private ensureDrain(): void {
+    if (this.running) return;
+    // 这里就吞掉异常：runOne 已把业务失败收敛成 unavailable，
+    // 剩下的是“连收尾都失败”（例如库已关闭）。不接住会变成未处理拒绝。
+    this.drainPromise = this.drain().catch(() => {});
   }
 
   private schedulePending(): void {
@@ -113,6 +148,9 @@ export class EnrichmentService {
     try {
       const hits = this.searchKb(card);
       const result = await this.callLlm(card, hits, settings);
+      // 请求是在关机前发出的：abort 后即使上游刚好返回成功，也不再写库，
+      // 避免把一次“被中断的分析”标成 done。
+      if (this.stopped) return;
       const view: EnrichmentView = {
         status: 'done',
         analysis_md: result.analysis_md,
@@ -128,6 +166,9 @@ export class EnrichmentService {
       };
       this.finish(card, 'done', view);
     } catch (error) {
+      // 关机导致的中断不算业务失败：不写 unavailable，保留 running，
+      // 下次 start() 会把它重置回 pending 重新排队。
+      if (this.stopped) return;
       // 不把原始错误写进卡片：可能带 URL、上游响应体甚至请求头。
       const reason = error instanceof AppError ? error.message : 'llm_unavailable';
       this.finish(card, 'unavailable', { status: 'unavailable', reason });
@@ -186,6 +227,7 @@ export class EnrichmentService {
       system: this.deps.llm.prompt(hits.length > 0 ? 'kb_suggestion' : 'card_analysis'),
       user,
       timeoutMs: settings.enrichmentTimeoutMs,
+      signal: this.controller.signal,
     });
     return sanitizeOutput(content);
   }

@@ -269,6 +269,31 @@ describe('汇报生成', () => {
     expect(list.items[0]?.status).toBe('cancelled');
   });
 
+  it('关机会中断在途生成，且返回前已把批次与汇报收尾为失败', async () => {
+    fake = await startFakeLlm(2_000);
+    const h = createHarness();
+    harness = h;
+    configure(h, fake.base);
+
+    const run = h.ctx.services.reports.startPeriodUpdate(testCtx());
+    const started = Date.now();
+    while (fake.requests.length === 0 && Date.now() - started < 2_000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(fake.requests).toHaveLength(1);
+
+    // 关机先 abort，再等后台把 report / report_run 写完。
+    // shutdown() 返回后必须已经落库；若只是 abort 而不等待，
+    // main.ts 随后的 db.close() 会让这些更新失败，页面永远停在“更新中”。
+    await h.ctx.services.reports.shutdown();
+
+    const runView = h.ctx.services.reports.status().runs.find((item) => item.id === run.id);
+    expect(runView?.status).toBe('failed');
+    expect(runView?.error_message).toBe('LLM_CANCELLED');
+    const list = h.ctx.services.reports.list({ kind: 'period', page_size: 20 });
+    expect(list.items[0]?.status).toBe('failed');
+  });
+
   it('模型未配置时明确拒绝发起，不留下空批次', () => {
     const h = createHarness();
     harness = h;
@@ -414,6 +439,46 @@ describe('专题汇报', () => {
     );
     await waitForIdle(h, retry.id);
     expect(h.ctx.services.reports.get(half).status).toBe('ready');
+  });
+
+  it('目标在批次执行途中被删除时批次失败，而不是静默成功', async () => {
+    fake = await startFakeLlm();
+    const h = createHarness();
+    harness = h;
+    configure(h, fake.base);
+
+    const periodRun = h.ctx.services.reports.startPeriodUpdate(testCtx());
+    await waitForIdle(h, periodRun.id);
+
+    const pick = (period: 'month' | 'quarter'): string =>
+      h.ctx.services.reports.list({ period, page_size: 5 }).items[0]!.id;
+    const month = pick('month');
+    const quarter = pick('quarter');
+
+    // 拖住第一条目标的模型调用，给“删除第二条目标”留出执行窗口。
+    fake.delayMs = 1_000;
+    const run = h.ctx.services.reports.startTopic(
+      { instruction: '按风险重写', targetReportIds: [month, quarter] },
+      testCtx(),
+    );
+
+    // 周期批次已用掉 6 次调用；第 7 次是本次专题的第一条目标。
+    const started = Date.now();
+    while (fake.requests.length < 7 && Date.now() - started < 2_000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(fake.requests).toHaveLength(7);
+
+    // 第一条正在生成（状态 generating），删除尚未开始、仍是 ready 的第二条。
+    h.ctx.services.reports.delete(quarter, testCtx());
+
+    const finished = await waitForIdle(h, run.id);
+    // 不能按启动时的快照继续跑：那会更新 0 行却把批次标成 done。
+    expect(finished.status).toBe('failed');
+    expect(finished.error_message).toContain(quarter);
+    expect(finished.completed).toBe(1);
+    // 第一条目标本身已正常完成。
+    expect(h.ctx.services.reports.get(month).status).toBe('ready');
   });
 
   it('取消多目标批次只影响当前一条，未开始的目标保持原状态', async () => {

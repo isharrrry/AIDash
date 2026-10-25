@@ -285,11 +285,3 @@ export function shortId(id: string): string {
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
-export function healthLabel(value: string | undefined): string {
-  if (!value) return '未知';
-  if (value === 'ok' || value === 'ready' || value === 'online') return '正常';
-  if (value === 'indexing' || value === 'running') return '索引中';
-  if (value === 'disabled') return '未启用';
-  if (value === 'error' || value === 'offline') return '异常';
-  return value;
-}

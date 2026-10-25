@@ -42,6 +42,15 @@ export class ApiError extends Error {
 export const TOKEN_KEY = 'aidash.token';
 const API_PREFIX = '/api';
 
+/**
+ * Web 请求的默认超时。
+ *
+ * 浏览器 fetch 本身没有超时；断网或服务假死时请求会一直挂着，
+ * useAsync 的 loading 永远不结束，轮询还会继续叠请求。
+ * 20 秒足够本地服务完成常规查询，也远短于用户会继续等待的耐心。
+ */
+export const DEFAULT_API_TIMEOUT_MS = 20_000;
+
 export function getToken(): string | null {
   try {
     return window.localStorage.getItem(TOKEN_KEY);
@@ -108,6 +117,8 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** 单次请求超时（毫秒）；不传使用 DEFAULT_API_TIMEOUT_MS。 */
+  timeoutMs?: number;
 }
 
 interface Envelope {
@@ -187,6 +198,34 @@ function toApiError(
   return new ApiError(code, message, status, parsed?.retryable ?? false, parsed?.details);
 }
 
+function resolveTimeoutMs(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : DEFAULT_API_TIMEOUT_MS;
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' &&
+      error instanceof DOMException &&
+      error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
+function timeoutError(timeoutMs: number): ApiError {
+  const readable =
+    timeoutMs >= 1000
+      ? `${Number.isInteger(timeoutMs / 1000) ? timeoutMs / 1000 : (timeoutMs / 1000).toFixed(1)} 秒`
+      : `${Math.max(1, Math.round(timeoutMs))} 毫秒`;
+  return new ApiError('TIMEOUT', `请求超时（${readable}），请检查网络后重试`, 0, true);
+}
+
+/** 用户取消必须保留 AbortError 语义，不能被网络错误覆盖。 */
+function cancelError(error: unknown): unknown {
+  return isAbortError(error) ? error : new DOMException('请求已取消', 'AbortError');
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   const token = getToken();
@@ -198,23 +237,50 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     body = JSON.stringify(options.body);
   }
 
+  // 超时与调用方取消合并成同一个 signal；用 timedOut 标记区分两者。
+  // 不能用 AbortSignal.timeout 单独替换 options.signal，否则调用方取消会丢失。
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const controller = new AbortController();
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const forwardAbort = (): void => controller.abort();
+  if (options.signal?.aborted) {
+    controller.abort();
+  } else {
+    options.signal?.addEventListener('abort', forwardAbort, { once: true });
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  const cleanup = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    options.signal?.removeEventListener('abort', forwardAbort);
+  };
+
   let response: Response;
+  let payload: unknown;
   try {
     response = await fetch(`${API_PREFIX}${path}`, {
       method: options.method ?? 'GET',
       headers,
       body,
-      signal: options.signal,
+      signal: controller.signal,
       // 面板展示的是实时状态，浏览器缓存会让“刷新”看起来没生效。
       cache: 'no-store',
     });
+    // 超时也覆盖响应体读取：服务返回响应头后卡住同样会让页面一直 loading。
+    payload = await readPayload(response);
   } catch (error) {
-    // AbortError 是调用方主动取消（组件卸载/切换筛选），必须原样抛出。
-    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    if (timedOut) throw timeoutError(timeoutMs);
+    if (options.signal?.aborted) throw cancelError(error);
+    // 没有触发调用方取消却收到 AbortError，按原语义透传。
+    if (isAbortError(error)) throw error;
     throw new ApiError('NETWORK_ERROR', '无法连接 AIDash 服务，请确认服务已启动', 0, true);
+  } finally {
+    cleanup();
   }
-
-  const payload = await readPayload(response);
 
   if (!response.ok) {
     const apiError = toApiError(response.status, payload, `请求失败（HTTP ${response.status}）`);

@@ -1,0 +1,37 @@
+{
+  "name": "aidash-runner",
+  "version": "0.1.0",
+  "description": "AIDash 本地值守壳：拉取 pending 任务、认领、执行本地 harness、发证据卡并回报状态（零第三方依赖）",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/the50w/aidash.git",
+    "directory": "40-build/20-aidash-runner"
+  },
+  "homepage": "https://gitee.com/the50w/aidash/tree/master/40-build/20-aidash-runner",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "aidash-runner": "bin/aidash-runner.mjs",
+    "aidash-watch": "bin/aidash-runner.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "aidash-runner.example.json",
+    "PLAN.md"
+  ],
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "keywords": [
+    "aidash",
+    "runner",
+    "watchdog",
+    "mcp",
+    "harness"
+  ]
+}

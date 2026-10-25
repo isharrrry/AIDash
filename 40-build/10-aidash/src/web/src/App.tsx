@@ -23,7 +23,8 @@ import { TasksPage } from './pages/TasksPage';
 
 const CHANNEL_STORAGE_KEY = 'aidash.channel';
 const PROJECT_STORAGE_KEY = 'aidash.project';
-const CHANNEL_PAGE_SIZE = 100;
+/** 通道树一次拉取的上限；服务端 page_size 默认上限也是 200。 */
+const CHANNEL_PAGE_SIZE = 200;
 
 /**
  * App 负责四件跨页的事：
@@ -85,10 +86,14 @@ function AppShell(): ReactElement {
     return unsubscribe;
   }, [token, notify]);
 
-  usePolling(() => {
-    channelsState.reload();
-    health.reload();
-  }, 30000, token !== null);
+  // 轮询等待两个请求都结束；上一次没回来时调度器会跳过下一拍，避免 in-flight 叠加。
+  usePolling(
+    async () => {
+      await Promise.all([channelsState.reload(), health.reload()]);
+    },
+    30000,
+    token !== null,
+  );
 
   const setCurrentChannelKey = useCallback((key: string) => {
     setCurrentChannelKeyState(key);
@@ -143,6 +148,8 @@ function AppShell(): ReactElement {
   }
 
   const channels = channelsState.data?.items ?? [];
+  // total 是服务端 COUNT(*)，用它与实际条数比较，才能知道通道树有没有被截断。
+  const channelsTotal = channelsState.data?.total ?? 0;
   const connection: ConnectionState = health.error
     ? 'offline'
     : health.data
@@ -176,6 +183,7 @@ function AppShell(): ReactElement {
           routeName={route.name}
           connection={connection}
           channels={channels}
+          channelsTotal={channelsTotal}
           channelsLoading={channelsState.loading}
           currentChannelKey={currentChannelKey}
           currentProject={currentProject}

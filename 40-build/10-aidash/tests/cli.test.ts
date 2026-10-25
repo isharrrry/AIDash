@@ -76,7 +76,10 @@ afterEach(async () => {
 });
 
 async function boot(): Promise<{ h: TestHarness; a: RunningApp }> {
-  harness = createHarness();
+  // 本文件测的是 runner 的认领→执行→回报流程，不是限流；
+  // 一个用例会连打十几次 MCP，撞上默认的 300/分钟会让无关断言假失败。
+  // 限流行为由 http-routes.test.ts 专门覆盖，这里把配额放到实际不设限。
+  harness = createHarness({ rateLimitPerMinute: 100_000, rateLimitBurst: 10_000 });
   app = await startApp(harness);
   return { h: harness, a: app };
 }

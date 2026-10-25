@@ -8,6 +8,7 @@ import {
   questionPayload,
   seedTask,
   startApp,
+  TEST_TOKEN,
   type RunningApp,
   type TestHarness,
 } from './helpers.js';
@@ -407,6 +408,35 @@ describe('静态页面与鉴权边界', () => {
     });
     expect(mcpNoToken.status).toBe(401);
   });
+
+  it('未认证的坏 JSON 先被鉴权拦截，不会先解析请求体', async () => {
+    const { a } = await boot();
+    // 关键顺序：限流/鉴权在 express.json 之前。
+    // 否则未认证请求也能让服务端先解析最多 10MB 的 body，且解析错误会抢在 401 前返回。
+    const unauth = await fetch(`${a.base}/api/tasks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"channel_key":',
+    });
+    expect(unauth.status).toBe(401);
+    expect(((await unauth.json()) as { error?: { message?: string } }).error?.message).toBe(
+      'AUTH_REQUIRED',
+    );
+
+    // 带正确令牌时才轮到 JSON 解析器；坏 JSON 仍应得到明确的 400，而不是 INTERNAL。
+    const authed = await fetch(`${a.base}/api/tasks`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: '{"channel_key":',
+    });
+    expect(authed.status).toBe(400);
+    expect(((await authed.json()) as { error?: { message?: string } }).error?.message).toBe(
+      'INVALID_JSON',
+    );
+  });
 });
 
 describe('管理路由', () => {
@@ -465,6 +495,39 @@ describe('管理路由', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('健康检查复用审计链缓存，只有按需接口才重新全量校验', async () => {
+    const { h, a } = await boot();
+    const first = await api<{ audit_chain: { ok: boolean; checked_at: string } }>(
+      a,
+      'GET',
+      '/api/health',
+    );
+    expect(first.body.data?.audit_chain.ok).toBe(true);
+    expect(typeof first.body.data?.audit_chain.checked_at).toBe('string');
+
+    // 直接插入一条断链记录，模拟磁盘损坏：触发器只禁止 UPDATE/DELETE，允许追加。
+    h.db
+      .prepare(
+        `INSERT INTO audit_log
+           (ts, actor_label, action, object_type, object_id, result, request_id,
+            detail_json, prev_hash, hash)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .run(h.clock.now(), 'tester', 'test.broken', null, null, 'ok', null, null, null, 'deadbeef');
+
+    // 缓存未过期：健康检查不应该再扫全表，所以仍返回上一次的“完整”。
+    const cached = await api<{ audit_chain: { ok: boolean } }>(a, 'GET', '/api/health');
+    expect(cached.body.data?.audit_chain.ok).toBe(true);
+
+    // 按需校验必须立刻发现断链，并把新结果写回缓存。
+    const fresh = await api<{ ok: boolean; broken_at: number }>(a, 'POST', '/api/audit/verify');
+    expect(fresh.status).toBe(200);
+    expect(fresh.body.data?.ok).toBe(false);
+    expect(fresh.body.data?.broken_at).toBeGreaterThan(0);
+    const after = await api<{ audit_chain: { ok: boolean } }>(a, 'GET', '/api/health');
+    expect(after.body.data?.audit_chain.ok).toBe(false);
+  });
+
   it('审计支持时间与动作过滤，非法枚举返回 400', async () => {
     const { h, a } = await boot();
     await api(a, 'POST', '/api/cards', { ...info, task_id: seedTask(h, CHANNEL) });
@@ -487,14 +550,52 @@ describe('管理路由', () => {
     expect(result.headers.get('x-request-id')).toBe('trace-123');
   });
 
-  it('限流按分钟窗口返回 RATE_LIMITED 与 retry-after', async () => {
-    const { a } = await boot({ rateLimitPerMinute: 1 });
+  it('令牌桶用尽突发配额后返回 RATE_LIMITED 与 retry-after', async () => {
+    // 速率压到 1/分钟、容量 2：测试期间几乎不补充，才能稳定观察到「耗尽」。
+    // 若沿用默认 burst=60，前 60 次都会放行，这条用例会假红。
+    const { a } = await boot({ rateLimitPerMinute: 1, rateLimitBurst: 2 });
     // /healthz 是探活端点，刻意不占限流额度。
     expect((await api(a, 'GET', '/healthz')).status).toBe(200);
+    expect((await api(a, 'GET', '/api/health')).status).toBe(200);
     expect((await api(a, 'GET', '/api/health')).status).toBe(200);
     const limited = await api(a, 'GET', '/api/health');
     expect(limited.status).toBe(429);
     expect(limited.body.error?.message).toBe('RATE_LIMITED');
-    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+    const retryAfter = Number(limited.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan(0);
+    // 速率 1/分钟 → 补 1 个令牌要 60 秒，所以等待上限就该在 60 秒附近。
+    // 若出现 3600 之类的值，说明单位算错了（毫秒当秒、或倒过来）。
+    expect(retryAfter).toBeLessThanOrEqual(60);
+  });
+
+  it('静态资源不消耗限流配额（只有 /api 与 /mcp 计数）', async () => {
+    // 这一条守的是实际踩过的坑：限流曾挂在全局，于是页面加载的
+    // index.html + JS/CSS 分片全吃配额，刷新两次之后连 API 都调不了。
+    const { a } = await boot({ rateLimitPerMinute: 1, rateLimitBurst: 2 });
+    for (let i = 0; i < 10; i += 1) {
+      await api(a, 'GET', '/');
+    }
+    // 打了 10 次静态路径，突发配额应当仍是满的 2 个。
+    expect((await api(a, 'GET', '/api/health')).status).toBe(200);
+    expect((await api(a, 'GET', '/api/health')).status).toBe(200);
+    expect((await api(a, 'GET', '/api/health')).status).toBe(429);
+  });
+
+  it('ACC-028：默认配额下 1 分钟内发 400 次必然出现 429', async () => {
+    // 这条直接对着验收判据写：REQ-FN-028 默认 300/分钟 + 突发 60，
+    // 400 次请求在一分钟内跑完，靠突发 + 补充也不够，后面必然被拒。
+    //
+    // **不传任何覆盖**：断言的是「出厂默认配置下，400 次请求必然被限」。
+    //
+    // 分工要说清楚：这条守的是「机制在默认配置下真的生效」；
+    // 具体数值（rate=300、burst=60）由 config-schema.test.ts 的默认值比对守着。
+    const { a } = await boot();
+    const statuses: number[] = [];
+    for (let i = 0; i < 400; i += 1) {
+      statuses.push((await api(a, 'GET', '/api/health')).status);
+    }
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
+    // 前 60 次是突发配额，必须全部放行 —— 否则说明容量参数没生效。
+    expect(statuses.slice(0, 60).every((status) => status === 200)).toBe(true);
   });
 });

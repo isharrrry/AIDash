@@ -19,6 +19,10 @@ import type {
 import { txImmediate, type Db } from '../db/connection.js';
 import type { MemoryRepo } from '../repos/memory-repo.js';
 import type { AuditService } from './audit-service.js';
+import {
+  mergeVersionedLines,
+  writeVersionedDocument,
+} from './versioned-document.js';
 
 export type MemoryAppendInput = z.infer<typeof memoryAppendSchema>;
 export type MemorySearchInput = z.infer<typeof memorySearchSchema>;
@@ -113,51 +117,36 @@ export class MemoryService {
     const now = this.clock.now();
     const outcome = txImmediate(this.db, () => {
       const current = this.memory.get(input.project);
-      const base = (current?.content_md ?? '').replace(/\s+$/, '');
-      // 已存在的行按 trim 后比较：缩进/尾随空格不同不应产生两条“看起来一样”的约束。
-      const existing = new Set(base ? base.split('\n').map((line) => line.trim()) : []);
-      const seen = new Set<string>();
-      const accepted: string[] = [];
-      let skippedDuplicates = 0;
-
-      for (const line of candidates) {
-        const key = line.trim();
-        if (input.dedupe && (existing.has(key) || seen.has(key))) {
-          skippedDuplicates += 1;
-          continue;
-        }
-        seen.add(key);
-        accepted.push(line);
-      }
-
-      if (accepted.length === 0) {
+      const merged = mergeVersionedLines({
+        currentContent: current?.content_md,
+        lines: candidates,
+        dedupe: input.dedupe,
+      });
+      if (merged.accepted.length === 0) {
         return {
           memory: current,
           appended: 0,
-          skippedDuplicates,
+          skippedDuplicates: merged.skippedDuplicates,
           skippedBlank,
         };
       }
 
-      const next = base ? `${base}\n${accepted.join('\n')}` : accepted.join('\n');
-      this.assertWithinLimit(next, current?.content_md ?? '', accepted.length);
-
-      const saved = this.memory.upsert(
-        input.project,
-        next,
-        current?.version ?? 0,
-        ctx.actorLabel,
+      this.assertWithinLimit(merged.content, current?.content_md ?? '', merged.accepted.length);
+      const saved = writeVersionedDocument({
+        current,
+        content: merged.content,
+        expectedVersion: current?.version ?? 0,
+        actor: ctx.actorLabel,
         now,
-      );
-      if (!saved.ok) {
-        // 事务内冲突理论上不会发生（同一进程同步执行），但保留这条分支，
-        // 未来引入异步/多进程时不会悄悄丢数据。
-        throw new AppError('CONFLICT', 'MEMORY_VERSION_CONFLICT', {
-          expected_version: current?.version ?? 0,
-          actual_version: saved.actualVersion,
-        });
-      }
-      return { memory: saved.memory, appended: accepted.length, skippedDuplicates, skippedBlank };
+        upsert: (content, version, actor, at) =>
+          this.memory.upsert(input.project, content, version, actor, at),
+      });
+      return {
+        memory: saved.memory,
+        appended: merged.accepted.length,
+        skippedDuplicates: merged.skippedDuplicates,
+        skippedBlank,
+      };
     });
 
     if (outcome.appended > 0) {
@@ -239,28 +228,18 @@ export class MemoryService {
     assertNoSecrets({ content_md: content });
 
     const now = this.clock.now();
-    const outcome = txImmediate(this.db, () => {
-      const current = this.memory.get(input.project);
-      if ((current?.content_md ?? '') === content) {
-        return { memory: current, changed: false };
-      }
-
-      const saved = this.memory.upsert(
-        input.project,
+    const outcome = txImmediate(this.db, () =>
+      writeVersionedDocument({
+        current: this.memory.get(input.project),
         content,
-        input.expected_version,
-        ctx.actorLabel,
+        expectedVersion: input.expected_version,
+        actor: ctx.actorLabel,
         now,
-      );
-      if (!saved.ok) {
-        throw new AppError('CONFLICT', 'MEMORY_VERSION_CONFLICT', {
-          expected_version: input.expected_version,
-          actual_version: saved.actualVersion,
-          hint: '先 memory.get 读取最新内容，合并后再用新的 version 保存',
-        });
-      }
-      return { memory: saved.memory, changed: true };
-    });
+        hint: '先 memory.get 读取最新内容，合并后再用新的 version 保存',
+        upsert: (nextContent, version, actor, at) =>
+          this.memory.upsert(input.project, nextContent, version, actor, at),
+      }),
+    );
 
     if (outcome.changed) {
       this.audit.record(ctx, 'memory.update', 'ok', 'project_memory', input.project, {

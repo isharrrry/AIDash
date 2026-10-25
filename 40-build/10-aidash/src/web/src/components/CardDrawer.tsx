@@ -5,6 +5,7 @@ import { ApiError, describeError } from '../api/client';
 import { answerCard, getCard, listCards, setHandoffState } from '../api/endpoints';
 import { useApp } from '../AppContext';
 import { copyToClipboard } from '../lib/clipboard';
+import { toAscendingPage } from '../lib/feed-page';
 import { openCard } from '../lib/router';
 import { useAsync } from '../hooks/useAsync';
 import { AnswerPanel } from './AnswerPanel';
@@ -14,6 +15,9 @@ import { EnrichmentPanel } from './EnrichmentPanel';
 import { ErrorBox, Loading } from './Feedback';
 import { KbDocPreview } from './KbDocPreview';
 import { useToast } from './Toast';
+
+/** 决策卡左右翻页一次取最近多少张待处理卡；提示文案里的“最近 M 张”也用它兜底。 */
+const QUESTION_NAV_PAGE_SIZE = 200;
 
 /**
  * SCR-02 卡片详情。
@@ -44,8 +48,10 @@ export function CardDrawer({
   // useAsync 在依赖变化时会保留上一张卡的数据；用 id 校验避免切换时短暂显示旧内容。
   const card = data && data.id === cardId ? data : null;
 
-  // 决策卡前后翻页：只取“待处理”的问题卡，顺序按创建时间，和决策队列的阅读顺序一致。
-  // 范围跟随右上角通道树；未聚焦时跨通道翻页。
+  // 决策卡前后翻页：只取“待处理”的问题卡，范围跟随右上角通道树；未聚焦时跨通道翻页。
+  // 必须倒序取“最近 N 张”再反转：正序取前 N 张拿到的是最旧的，超过 N 张后
+  // 新拍板卡永远无法通过 ←/→ 翻到。反转后索引仍按时间正序，
+  // 所以“← 更早、→ 更新”的方向不变，索引边界逻辑也不用改。
   const questions = useAsync<Page<CardView>>(
     () =>
       listCards({
@@ -53,14 +59,21 @@ export function CardDrawer({
         project: currentProject || undefined,
         types: ['question'],
         statuses: ['open'],
-        page_size: 200,
+        page_size: QUESTION_NAV_PAGE_SIZE,
         sort: 'created_at',
-        order: 'asc',
+        order: 'desc',
       }),
     [currentChannelKey, currentProject],
     card?.type === 'question',
   );
-  const questionItems = questions.data?.items ?? [];
+  const questionPage = questions.data
+    ? toAscendingPage(
+        questions.data.items,
+        questions.data.total,
+        questions.data.page_size || QUESTION_NAV_PAGE_SIZE,
+      )
+    : null;
+  const questionItems = questionPage?.items ?? [];
   const questionIndex = questionItems.findIndex((item) => item.id === cardId);
   const prevQuestion = questionIndex > 0 ? questionItems[questionIndex - 1] : undefined;
   const nextQuestion =
@@ -224,6 +237,12 @@ export function CardDrawer({
           <div className="question-modal-body">
             {/* 左栏：四段背景。宽屏下四段用两列网格，减少纵向滚动。 */}
             <div className="question-modal-main">
+              {/* 只装了最近一窗时必须说明，否则用户会以为待决策卡已经翻完。 */}
+              {questionPage?.truncated ? (
+                <p className="muted small">
+                  共 {questionPage.total} 张，仅显示最近 {questionPage.limit} 张
+                </p>
+              ) : null}
               {error ? <ErrorBox message={error} onRetry={reload} /> : null}
               <CardBody
                 card={card}

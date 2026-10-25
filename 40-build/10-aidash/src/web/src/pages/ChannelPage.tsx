@@ -25,6 +25,22 @@ import { TaskBoard } from '../components/TaskBoard';
 import { useToast } from '../components/Toast';
 
 /**
+ * 通道页按 key 反查通道时的取数窗口。
+ *
+ * 服务端 q 是子串匹配（channel_key/title/alias），同名或同前缀的通道可能很多。
+ * 先取 50 条再精确匹配，会在结果被截断时误判“通道不存在”；这里取满服务端默认上限。
+ */
+const CHANNEL_LOOKUP_PAGE_SIZE = 200;
+
+interface ChannelLookup {
+  channel: ChannelView | null;
+  /** q 命中的通道总数（服务端 COUNT(*)，不受当前页限制）。 */
+  total: number;
+  /** 本次实际取回条数；只有 total 更大时才说明“匹配被分页截断”。 */
+  received: number;
+}
+
+/**
  * 通道详情页（路由 `#/c/{channel_key}`）。
  *
  * 设计说明里的 SCR-04 是“通道视图”，任务要求把它当作 SCR-02 通道页实现；
@@ -49,14 +65,20 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
   const typeKey = filters.types.join(',');
 
   // 通道页可能直接深链到已归档通道，因此包含归档并做精确 key 匹配。
-  const channelState = useAsync<ChannelView | null>(
+  const channelState = useAsync<ChannelLookup>(
     async () => {
       const result = await listChannels({
         q: channelKey,
         include_archived: true,
-        page_size: 50,
+        page_size: CHANNEL_LOOKUP_PAGE_SIZE,
       });
-      return result.items.find((item) => item.channel_key === channelKey) ?? null;
+      return {
+        channel: result.items.find((item) => item.channel_key === channelKey) ?? null,
+        // 保留 total 与实收条数：只有 total 更大才说明匹配结果被截断。
+        // 仅凭 total > 0 判断会把“key 拼错但另有前缀相同的通道”误报成“数据太多”。
+        total: result.total,
+        received: result.items.length,
+      };
     },
     [channelKey, refreshNonce],
   );
@@ -105,10 +127,8 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
     setAliasDraft('');
   }, [channelKey]);
 
-  const reloadAll = (): void => {
-    channelState.reload();
-    cards.reload();
-    reloadChannels();
+  const reloadAll = async (): Promise<void> => {
+    await Promise.all([channelState.reload(), cards.reload(), reloadChannels()]);
   };
 
   usePolling(reloadAll, 30000);
@@ -132,7 +152,7 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
   };
 
   const toggleArchive = async (): Promise<void> => {
-    const channel = channelState.data;
+    const channel = channelState.data?.channel;
     if (!channel) return;
     const next = channel.status === 'archived' ? 'active' : 'archived';
     const verb = next === 'archived' ? '归档' : '恢复';
@@ -151,7 +171,7 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
   };
 
   const saveAlias = async (): Promise<void> => {
-    const channel = channelState.data;
+    const channel = channelState.data?.channel;
     if (!channel) return;
     // 空输入 = 清空别名，展示层会自动回退到 topic/title/channel_key。
     const next = aliasDraft.trim() || null;
@@ -169,7 +189,10 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
     }
   };
 
-  const channel = channelState.data;
+  const channel = channelState.data?.channel ?? null;
+  const channelLookupTruncated = channelState.data
+    ? channelState.data.total > channelState.data.received
+    : false;
 
   return (
     <div className="page">
@@ -198,6 +221,10 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
               </>
             ) : channelState.loading ? (
               ' 通道信息加载中…'
+            ) : channelLookupTruncated ? (
+              // q 是子串匹配且结果超过取数窗口：精确 key 可能就在下一页，
+              // 不能误报“未找到”；若没被截断，取回的就是全部匹配，仍按未找到处理。
+              ' 匹配结果过多，请从左侧通道树进入'
             ) : (
               ' 通道信息未找到'
             )}

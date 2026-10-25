@@ -435,4 +435,33 @@ describe('后台维护 worker', () => {
     expect(h.ctx.repos.harnesses.get('h-worker')?.status).toBe('offline');
     expect(h.ctx.repos.cards.get(card.id)?.status).toBe('archived');
   });
+
+  it('卡片保留天数取运行时设置，而不是启动配置', () => {
+    // 启动配置只保留 1 天，页面把保留期改成 90 天：
+    // 卡片是否归档必须以运行设置为准，否则设置页改了等于没改。
+    const h = createHarness({ cardRetentionDays: 1 });
+    harness = h;
+    const ctx = { actorLabel: 'tester', requestId: 'req_retention_settings', isOwner: true };
+    const card = h.ctx.services.cards.post(
+      cardPostSchema.parse({
+        channel_key: CHANNEL,
+        type: 'info',
+        title: '两天前的卡',
+        body_md: '正文',
+        severity: 'info',
+        task_id: seedTask(h, CHANNEL, '运行时保留期承载任务'),
+      }) as Parameters<TestHarness['ctx']['services']['cards']['post']>[0],
+      ctx,
+    ).card;
+
+    h.ctx.services.settings.update({ card_retention_days: 90 }, ctx);
+    h.clock.advance(2 * 24 * 60 * 60 * 1000);
+
+    const worker = createBackgroundWorker(h.ctx, h.log);
+    worker.start();
+    worker.stop();
+
+    // 2 天 < 90 天：读运行时设置时不归档；读启动配置（1 天）时这里会变成 archived。
+    expect(h.ctx.repos.cards.get(card.id)?.status).toBe('open');
+  });
 });

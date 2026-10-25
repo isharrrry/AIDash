@@ -147,6 +147,20 @@ export function adminRouter(ctx: AppContext): Router {
     }),
   );
 
+  /**
+   * 按需校验审计链。
+   *
+   * 为什么是 POST：这是一次可能很重的全表扫描，不适合被浏览器预取/缓存；
+   * 语义上也不是“读一个资源”，而是“触发一次校验动作”。
+   * 校验结果会写回 AuditService 的缓存，随后的 /api/health 直接复用。
+   */
+  router.post(
+    '/audit/verify',
+    asyncHandler((_req, res) => {
+      ok(res, ctx.services.audit.verifyFresh());
+    }),
+  );
+
   router.get(
     '/harnesses',
     asyncHandler((_req, res) => {
@@ -185,7 +199,9 @@ export function adminRouter(ctx: AppContext): Router {
         version: SERVER_VERSION,
         uptime_seconds: Math.round((Date.now() - ctx.startedAt) / 1000),
         db: { path: ctx.config.dbPath, size_bytes: dbSizeBytes(ctx) },
-        audit_chain: ctx.services.audit.verify(),
+        // 只读缓存：设置页 30 秒轮询一次，不能每次都重算整条哈希链。
+        // 需要“此刻是否断链”的确定答案时，调用 POST /api/audit/verify。
+        audit_chain: ctx.services.audit.verifyCached(),
         waiting_requests: ctx.services.decisions.waitingCount(),
       });
     }),

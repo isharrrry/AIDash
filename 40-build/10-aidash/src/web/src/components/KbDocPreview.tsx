@@ -46,7 +46,7 @@ export function KbDocPreview({
               ))}
             </div>
           ) : null}
-          <Markdown source={doc.data.content_md ?? doc.data.body ?? ''} />
+          <Markdown source={doc.data.body} />
         </>
       ) : null}
     </section>

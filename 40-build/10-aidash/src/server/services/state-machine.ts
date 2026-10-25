@@ -20,7 +20,8 @@ export type TaskStatusEvent =
   | 'complete'
   | 'fail'
   | 'cancel'
-  | 'release';
+  | 'release'
+  | 'retry';
 
 /**
  * 不改变状态的事件。
@@ -56,6 +57,10 @@ export const TASK_TRANSITIONS: Record<TaskStatusEvent, TransitionRule> = {
     needsToken: true,
   },
   release: { from: ['claimed', 'in_progress', 'blocked'], to: 'pending', needsToken: true },
+  // failed 是结束态，但不应是“死状态”：误标失败或决定重做时，需要一个显式出口。
+  // 只允许 failed → pending，且不需要 token——进入 failed 时令牌已按终态规则清空，
+  // 此刻要求 token 等于永远无法重排。重排后仍需重新 claim 才能执行。
+  retry: { from: ['failed'], to: 'pending', needsToken: false },
 };
 
 /** 类型守卫：把联合事件缩窄到状态转移事件，TASK_TRANSITIONS 才可索引。 */

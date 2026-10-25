@@ -100,10 +100,17 @@ export class TaskRepo {
     return this.db.prepare('SELECT * FROM task WHERE id = ?').get(id) as Task | undefined;
   }
 
-  findByIdem(key: string): Task | undefined {
-    return this.db.prepare('SELECT * FROM task WHERE idempotency_key = ?').get(key) as
-      | Task
-      | undefined;
+  /**
+   * 幂等键按通道隔离查询（D-1）。
+   *
+   * 不能只按 key 查：同一 key 在另一个通道是「另一件事」，全局命中的话
+   * 会把旧任务当成新请求的结果返回，并让请求通道留下空记录。
+   * 对应迁移 017 把唯一索引改成了 (channel_id, idempotency_key)。
+   */
+  findByIdem(channelId: string, key: string): Task | undefined {
+    return this.db
+      .prepare('SELECT * FROM task WHERE channel_id = ? AND idempotency_key = ?')
+      .get(channelId, key) as Task | undefined;
   }
 
   insert(task: Task): Task {
@@ -306,35 +313,40 @@ export class TaskRepo {
   }
 
   /**
-   * 终态统一清空令牌，满足 CHECK(status NOT IN 终态 OR claim_token IS NULL)。
-   * 同时按目标状态补时间线：调用方即使没显式给时间，终态也必须有可追溯的时刻。
+   * 取子树全部字段，供 copy 使用。
+   *
+   * 这里不能省 description_md：复制任务要把正文一起带过去。
+   * 只做深度/环校验的调用方应改用 findSubtreePaths，别为了几个 path 读整行。
    */
-  close(id: string, status: 'done' | 'failed' | 'cancelled', patch: Partial<Task>): void {
-    const now = patch.updated_at ?? Date.now();
-    const closedAt: Partial<Task> =
-      status === 'done'
-        ? { completed_at: patch.completed_at ?? now }
-        : status === 'failed'
-          ? { failed_at: patch.failed_at ?? now }
-          : { cancelled_at: patch.cancelled_at ?? now };
-    this.updateFields(id, {
-      ...patch,
-      ...closedAt,
-      status,
-      claimed_by: null,
-      claim_token: null,
-      claim_expires_at: null,
-      updated_at: now,
-    });
-  }
-
   findSubtree(rootId: string): Task[] {
     const root = this.get(rootId);
     if (!root) return [];
     const prefix = escapeLike(root.path);
     return this.db
-      .prepare("SELECT * FROM task WHERE path = ? OR path LIKE ? ESCAPE '\\' ORDER BY path")
+      .prepare(
+        `SELECT ${taskColumns(true)} FROM task
+          WHERE path = ? OR path LIKE ? ESCAPE '\\' ORDER BY path`,
+      )
       .all(root.path, `${prefix}%`) as Task[];
+  }
+
+  /**
+   * 只取子树路径。
+   *
+   * move 前的深度校验只需要“最深后代有多少层”；走 findSubtree 会把每个节点的
+   * description_md（可能内嵌 base64 截图）一起读进 Node 堆。
+   * 根节点也只投影 path，避免“为了查路径先读一次全文”。
+   */
+  findSubtreePaths(rootId: string): string[] {
+    const root = this.db
+      .prepare('SELECT path FROM task WHERE id = ?')
+      .get(rootId) as { path: string } | undefined;
+    if (!root) return [];
+    const prefix = escapeLike(root.path);
+    const rows = this.db
+      .prepare("SELECT path FROM task WHERE path = ? OR path LIKE ? ESCAPE '\\' ORDER BY path")
+      .all(root.path, `${prefix}%`) as Array<{ path: string }>;
+    return rows.map((row) => row.path);
   }
 
   /**
@@ -458,22 +470,6 @@ export class TaskRepo {
     return result.changes;
   }
 
-  countByStatus(): Record<string, number> {
-    const rows = this.db
-      .prepare('SELECT status, COUNT(*) AS n FROM task GROUP BY status')
-      .all() as Array<{ status: string; n: number }>;
-    return Object.fromEntries(rows.map((row) => [row.status, row.n]));
-  }
-
-  countOpen(): number {
-    return (
-      this.db
-        .prepare(
-          "SELECT COUNT(*) AS n FROM task WHERE status IN ('pending','claimed','in_progress','blocked')",
-        )
-        .get() as { n: number }
-    ).n;
-  }
 }
 
 export function toTaskView(

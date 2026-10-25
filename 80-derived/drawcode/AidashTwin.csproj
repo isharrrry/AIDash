@@ -1,0 +1,40 @@
+<!--
+  AIDash 孪生程序集（drawcode 路径 A）。
+  无 importers/callers：这是一个独立建模项目，只被 `dotnet build` 与 `drawcode build` 使用，
+  不引用也不改动 AIDash 的任何生产代码与 API，不定义任何运行时数据 schema。
+
+  这是什么：把 20-spec / 30-design 的设计基线写成一套「能编译、能出图」的 C# 声明层。
+  它不是可运行的 AIDash —— AIDash 本体是 TypeScript/Node，这里只有模块交联、信号读写、
+  持久化数据结构三样东西的概要，用于 drawcode 生成 .drawio 并与设计基线做同步检查。
+
+  用户逐字原话：「我没找到AIDash仓的设计的孪生Drawcode工程在哪，是否做好了同步演进，补齐并检查」
+
+  为什么用 C# 而不是直接画 .drawio：
+  - 图是派生的，代码是事实源。手画的图一改代码就过期，且没人会被 CI 拦住；
+  - C# 有编译期检查，写错类型名 / 用错枚举编译就报错（C 侧是字符串标签，写错会静默忽略）；
+  - drawcode 能从 IL 的 ldsfld/stsfld 还原读写边，不需要额外维护一份边表。
+
+  构建约束（drawcode docs/templates.md）：
+  - 不要开 PublishTrimmed / PublishSingleFile，裁剪会移除特性与字段，读取器读不到；
+  - 目标框架随本机 SDK 走，这里不锁死具体补丁版本。
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 这是建模产物，不参与 AIDash 的发布包；关掉打包相关分析以免噪声。 -->
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <!--
+      CS8618：静态信号字段声明为非空引用类型但没有初值。
+      这些类只被 drawcode 读元数据，永远不会被实例化；「信号在产生前是 null」
+      正是我们要表达的语义，加 `?` 反而会让节点标签多出一个问号。
+      真实工程里这条警告该修，这里的抑制是有意的。
+    -->
+    <NoWarn>$(NoWarn);CS8618</NoWarn>
+  </PropertyGroup>
+
+</Project>

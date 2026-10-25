@@ -1,6 +1,4 @@
 import fs from 'node:fs';
-import http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,6 +6,7 @@ import { cardPostSchema, taskCreateSchema } from '../src/shared/schemas.js';
 import type { CardPostInput } from '../src/server/services/card-service.js';
 import { chatUrl } from '../src/server/services/llm-service.js';
 import { sanitizeDigestLines } from '../src/server/services/memory-digest-service.js';
+import { startFakeLlm, type FakeLlm } from './fakes/fake-llm.js';
 import {
   api,
   createHarness,
@@ -22,12 +21,33 @@ const CHANNEL = 'devhost/myproj/auth-bug';
 let harness: TestHarness | null = null;
 let app: RunningApp | null = null;
 const cleanupDirs: string[] = [];
+/**
+ * 本文件启动过的假 LLM 服务。
+ *
+ * 为什么不能只在用例末尾 `await fake.close()`：断言失败会直接抛出，
+ * 后面的 close 永远执行不到，回环端口与 keep-alive 连接就留给了整个进程。
+ * 以前这种泄漏只在「测试恰好失败」时出现，最难排查——失败的那条看起来
+ * 只是断言错，实际还附带一个没关的服务。统一登记后由 afterEach 兜底，
+ * 用例内仍可显式 close（重复 close 是安全的），失败时也不会漏。
+ */
+const activeFakes: FakeLlm[] = [];
+
+/** 登记并返回假 LLM；所有用例都应走这个包装，而不是直接 startFakeLlm。 */
+async function trackedFakeLlm(
+  ...args: Parameters<typeof startFakeLlm>
+): ReturnType<typeof startFakeLlm> {
+  const fake = await startFakeLlm(...args);
+  activeFakes.push(fake);
+  return fake;
+}
 
 afterEach(async () => {
   await app?.close();
   app = null;
   harness?.close();
   harness = null;
+  // 先关假 LLM 再删临时目录：失败的用例可能还有挂起连接指向目录里的东西。
+  for (const fake of activeFakes.splice(0)) await fake.close();
   for (const dir of cleanupDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -40,65 +60,6 @@ function seedTask(h: TestHarness, title = '承载卡片的测试任务'): string
     taskCreateSchema.parse({ channel_key: CHANNEL, title }),
     testCtx(),
   ).task.id;
-}
-
-interface FakeRequest {
-  url: string;
-  auth: string | undefined;
-  body: {
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    messages?: Array<{ role: string; content: string }>;
-  };
-}
-
-interface FakeLlm {
-  base: string;
-  requests: FakeRequest[];
-  setContent: (content: string) => void;
-  setStatus: (status: number) => void;
-  close: () => Promise<void>;
-}
-
-/**
- * 假 LLM 网关。
- *
- * 为什么不用 mock fetch：这里要验证的正是真实 HTTP 形状——路径补全、
- * Bearer 头、messages 与 max_tokens 是否按档位发出；mock 掉 fetch 会把
- * 这些细节一起 mock 掉，测试就只剩“函数被调用过”。
- */
-async function startFakeLlm(content = '{"lines":[]}'): Promise<FakeLlm> {
-  let reply = content;
-  let status = 200;
-  const requests: FakeRequest[] = [];
-  const server = http.createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      requests.push({
-        url: req.url ?? '',
-        auth: req.headers.authorization,
-        body: raw ? (JSON.parse(raw) as FakeRequest['body']) : {},
-      });
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as AddressInfo).port;
-  return {
-    base: `http://127.0.0.1:${port}/v1`,
-    requests,
-    setContent: (value) => {
-      reply = value;
-    },
-    setStatus: (value) => {
-      status = value;
-    },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
 }
 
 function configure(h: TestHarness, base: string, mode: 'fast' | 'standard' | 'max' = 'max'): void {
@@ -165,7 +126,7 @@ describe('LLM 配置', () => {
   });
 
   it('测试连接走真实 HTTP，档位决定 max_tokens 与温度', async () => {
-    const fake = await startFakeLlm('可用');
+    const fake = await trackedFakeLlm('可用');
     const h = createHarness();
     harness = h;
     configure(h, fake.base, 'max');
@@ -236,7 +197,7 @@ describe('LLM 配置', () => {
   });
 
   it('能力开关由 key 与知识库共同决定', async () => {
-    const fake = await startFakeLlm();
+    const fake = await trackedFakeLlm();
     const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aidash-kb-ready-'));
     cleanupDirs.push(kbDir);
     fs.writeFileSync(
@@ -276,7 +237,7 @@ describe('知识库建议与自动增强', () => {
   });
 
   it('命中知识库用 kb_suggestion，未命中退回 card_analysis', async () => {
-    const fake = await startFakeLlm(
+    const fake = await trackedFakeLlm(
       '{"analysis_md":"先确认白名单","suggestions":[{"text":"查网关白名单","rationale":"与日志一致","confidence":0.8}],"confidence":0.7}',
     );
     const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aidash-kb-enrich-'));
@@ -375,7 +336,7 @@ describe('自动记忆归纳', () => {
 
   it('手动归纳写入记忆并记录运行历史，第二次去重', async () => {
     const line = '- [2026-10-24] [deploy] 发布前先备份数据库，再跑迁移';
-    const fake = await startFakeLlm(JSON.stringify({ lines: [line] }));
+    const fake = await trackedFakeLlm(JSON.stringify({ lines: [line] }));
     const h = createHarness();
     harness = h;
     configure(h, fake.base);
@@ -402,7 +363,7 @@ describe('自动记忆归纳', () => {
   });
 
   it('素材不足与模型未配置都留下可追溯的运行记录', async () => {
-    const fake = await startFakeLlm('{"lines":["- [x] [y] 不该被写到记忆"]}');
+    const fake = await trackedFakeLlm('{"lines":["- [x] [y] 不该被写到记忆"]}');
     const h = createHarness();
     harness = h;
     configure(h, fake.base);

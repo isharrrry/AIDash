@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { CardView, TaskStatus, TaskView, TreeNode } from '../types';
+import type { CardView, Page, TaskStatus, TaskView, TreeNode } from '../types';
 import { ApiError, describeError } from '../api/client';
 import {
   ackEndNotice,
@@ -16,27 +16,29 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../hooks/useAsync';
 import { useDebounced } from '../hooks/useDebounced';
 import { usePolling } from '../hooks/usePolling';
-import { TASK_STATUS_LABELS } from '../lib/format';
 import { openCard } from '../lib/router';
 import { stepTaskId } from '../lib/task-nav';
-import { matchesTaskKeyword } from '../lib/task-tree';
+import { TASK_TREE_MAX_DEPTH } from '../lib/task-tree';
 import { EmptyState, ErrorBox, Loading } from './Feedback';
+import { TaskBoardHeader } from './TaskBoardHeader';
+import { TaskBoardToolbar } from './TaskBoardToolbar';
 import { TaskCreateForm } from './TaskCreateForm';
 import { TaskDetail } from './TaskDetail';
 import { sortTree, TaskTree } from './TaskTree';
 import { useToast } from './Toast';
+import {
+  applyEndNoticeOverrides,
+  applyUnreadOverrides,
+  computeTaskStats,
+  filterTree,
+  flattenTree,
+  groupQuestionsByTask,
+  withoutClosed,
+} from './task-board-utils';
 
 const HARNESS_STORAGE_KEY = 'aidash.harness_id';
-const ALL_STATUSES: TaskStatus[] = [
-  'draft',
-  'pending',
-  'claimed',
-  'in_progress',
-  'blocked',
-  'done',
-  'failed',
-  'cancelled',
-];
+/** 任务行下挂的决策卡一次取多少张；与服务端默认分页上限对齐。 */
+const QUESTION_CARDS_PAGE_SIZE = 200;
 
 /**
  * SCR-03 任务树看板。
@@ -99,7 +101,8 @@ export function TaskBoard({
   const debouncedKeyword = useDebounced(keyword, 200);
 
   const tree = useAsync<TreeNode[]>(
-    () => (channelKey ? getTaskTree(channelKey, 10) : Promise.resolve([])),
+    // 显式传服务端允许的最大创建深度，避免默认只展开前 10 层。
+    () => (channelKey ? getTaskTree(channelKey, TASK_TREE_MAX_DEPTH) : Promise.resolve([])),
     [channelKey, refreshNonce],
     Boolean(channelKey),
   );
@@ -111,16 +114,23 @@ export function TaskBoard({
    * 这里按 task_id 归组后直接挂到任务行下面，归属关系不用再猜。
    *
    * 只取 question：info/status/artifact 是任务的证据流，塞进树里会淹掉决策。
+   * 保留 total：一页装不下时要在树上方明说，不能让用户以为决策卡只有这些。
    */
-  const questions = useAsync<CardView[]>(
+  const questions = useAsync<Page<CardView>>(
     () =>
       channelKey
         ? listCards({
             channel_key: channelKey,
             types: ['question'],
-            page_size: 200,
-          }).then((page) => page.items)
-        : Promise.resolve([]),
+            page_size: QUESTION_CARDS_PAGE_SIZE,
+          })
+        : Promise.resolve({
+            items: [],
+            page: 1,
+            page_size: QUESTION_CARDS_PAGE_SIZE,
+            total: 0,
+            has_more: false,
+          }),
     [channelKey, refreshNonce],
     Boolean(channelKey),
   );
@@ -140,9 +150,10 @@ export function TaskBoard({
   }, [channelKey]);
 
   usePolling(
-    () => {
-      tree.reload();
-      questions.reload();
+    // 必须返回 Promise：调度器靠它判断上一轮是否结束；
+    // 这里若只调用不返回，慢请求期间每一拍都会再叠一批。
+    async () => {
+      await Promise.all([tree.reload(), questions.reload()]);
     },
     30000,
     Boolean(channelKey),
@@ -162,54 +173,7 @@ export function TaskBoard({
   const flatTasks = useMemo(() => flattenTree(tree.data ?? []), [tree.data]);
   // 头部统计按整棵树算，不受状态/负责人筛选影响：
   // 筛选是“临时聚焦”，统计是“这条通道还有多少活”，两者口径混在一起会误导认领。
-  const stats = useMemo(() => {
-    let open = 0;
-    let active = 0;
-    let pending = 0;
-    let draft = 0;
-    let blocked = 0;
-    let done = 0;
-    let cancelled = 0;
-    let deferred = 0;
-    let riskOpen = 0;
-    for (const task of flatTasks) {
-      // “进行中”= 已被认领且正在做。claimed 也是有人接了，只差还没点开始，
-      // 对用户来说都属于“正在处理”，所以和 in_progress 一起算，不让进度条空转。
-      if (task.status === 'claimed' || task.status === 'in_progress') active += 1;
-      if (task.status === 'pending') pending += 1;
-      if (task.status === 'draft') draft += 1;
-      if (task.status === 'blocked') blocked += 1;
-      if (task.status === 'done') done += 1;
-      if (task.status === 'cancelled') cancelled += 1;
-      // 暂缓是独立维度：任务可能同时是 pending 且已暂缓，两个统计都要计入。
-      if (task.defer_reason) deferred += 1;
-      // 隐患同样是独立维度：它可能挂在已完成的任务上，只统计仍未解除的。
-      if (task.risk_note && !task.risk_resolved_at) riskOpen += 1;
-      // 口径必须与服务端 channel.open_task_count 完全一致：pending/claimed/in_progress/blocked。
-      // draft 还没提交（不可认领），不计“有活待干”；
-      // 两边定义不同会让通道 chip 的“未结束”和看板头部的“未结束”对不上。
-      if (
-        task.status === 'pending' ||
-        task.status === 'claimed' ||
-        task.status === 'in_progress' ||
-        task.status === 'blocked'
-      ) {
-        open += 1;
-      }
-    }
-    return {
-      total: flatTasks.length,
-      open,
-      active,
-      pending,
-      draft,
-      blocked,
-      done,
-      cancelled,
-      deferred,
-      riskOpen,
-    };
-  }, [flatTasks]);
+  const stats = useMemo(() => computeTaskStats(flatTasks), [flatTasks]);
   /**
    * 进度条分母去掉“已取消”。
    *
@@ -219,16 +183,10 @@ export function TaskBoard({
   const progressBase = Math.max(stats.total - stats.cancelled, 0);
   const donePct = progressBase > 0 ? Math.round((stats.done / progressBase) * 100) : 0;
   const activePct = progressBase > 0 ? Math.round((stats.active / progressBase) * 100) : 0;
-  const questionsByTask = useMemo(() => {
-    const grouped: Record<string, CardView[]> = {};
-    for (const card of questions.data ?? []) {
-      if (!card.task_id) continue;
-      const list = grouped[card.task_id];
-      if (list) list.push(card);
-      else grouped[card.task_id] = [card];
-    }
-    return grouped;
-  }, [questions.data]);
+  const questionsByTask = useMemo(
+    () => groupQuestionsByTask(questions.data?.items ?? []),
+    [questions.data],
+  );
   const statusKey = statuses.join(',');
   const visibleTree = useMemo(() => {
     const filtered = filterTree(
@@ -452,84 +410,18 @@ export function TaskBoard({
 
   return (
     <section className={compact ? 'panel task-board compact' : 'panel task-board'} aria-label="任务树">
-      <header className="panel-header task-board-header">
-        <div className="task-board-heading">
-          <div className="task-board-titleline">
-            <h2>{compact ? '本次通道任务' : '任务树'}</h2>
-            <div className="task-stats" aria-label="任务统计">
-              <span className="task-stat">总节点 <strong>{stats.total}</strong></span>
-              <span className="task-stat task-stat-active">
-                进行中 <strong>{stats.active}</strong>
-              </span>
-              <span className="task-stat" title="还没人接的任务；已暂缓的也在这里，但会带“已暂缓”标">
-                待认领 <strong>{stats.pending}</strong>
-              </span>
-              <span className="task-stat" title="还没提交、不可认领的草稿">
-                草稿 <strong>{stats.draft}</strong>
-              </span>
-              <span className="task-stat" title="已明确决定先不做、并写了原因的任务">
-                已暂缓 <strong>{stats.deferred}</strong>
-              </span>
-              <span className="task-stat task-stat-blocked">阻塞 <strong>{stats.blocked}</strong></span>
-              <span
-                className={stats.riskOpen > 0 ? 'task-stat task-stat-risk' : 'task-stat'}
-                title="带着未解除隐患收口的任务；已解除的不计入，但可在复盘筛选里查到"
-              >
-                带隐患 <strong>{stats.riskOpen}</strong>
-              </span>
-              <span className="task-stat task-stat-done">完成 <strong>{stats.done}</strong></span>
-              <span className="task-stat">取消 <strong>{stats.cancelled}</strong></span>
-            </div>
-          </div>
-          {/*
-            进度条回答一个统计数字回答不了的问题：这条通道离收口还有多远。
-            分段而不是单一完成度：进行中的量也在动，用户能看出“活有人在干”
-            还是“全堆在待认领”。分母去掉取消（取消是决定不做，不是落后）。
-          */}
-          <div
-            className="task-progress"
-            role="progressbar"
-            aria-label="任务完成进度"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={donePct}
-            title={`完成 ${stats.done} / 有效 ${progressBase}（不含取消 ${stats.cancelled}）；进行中 ${stats.active}，待认领 ${stats.pending}，草稿 ${stats.draft}`}
-          >
-            <div className="task-progress-track" aria-hidden="true">
-              <span className="task-progress-done" style={{ width: `${donePct}%` }} />
-              <span className="task-progress-active" style={{ width: `${Math.min(activePct, 100 - donePct)}%` }} />
-            </div>
-            <span className="task-progress-text">
-              完成 <strong>{donePct}%</strong>
-              <span className="muted">
-                {' '}· 进行中 {stats.active} · 未开始 {stats.pending + stats.draft}
-                {stats.cancelled > 0 ? ` · 已取消 ${stats.cancelled}` : ''}
-              </span>
-            </span>
-          </div>
-        </div>
-        <div className="inline">
-          <button
-            type="button"
-            className={hideClosed ? 'btn btn-small' : 'btn btn-small btn-ghost'}
-            aria-pressed={hideClosed}
-            title={
-              hideClosed
-                ? '当前只显示未结束或带结束通知的任务；点一下显示全部'
-                : '当前显示全部任务；点一下只看待处理'
-            }
-            onClick={() => setHideClosed((value) => !value)}
-          >
-            {hideClosed ? `全部（含已结束 ${stats.done + stats.cancelled}）` : '只看待处理'}
-          </button>
-          <button type="button" className="btn btn-small" onClick={() => setCreating((value) => !value)}>
-            {creating ? '收起新建' : '新建任务'}
-          </button>
-          <button type="button" className="btn btn-small btn-ghost" onClick={refreshAll}>
-            刷新
-          </button>
-        </div>
-      </header>
+      <TaskBoardHeader
+        compact={compact}
+        stats={stats}
+        progressBase={progressBase}
+        donePct={donePct}
+        activePct={activePct}
+        hideClosed={hideClosed}
+        creating={creating}
+        onToggleHideClosed={() => setHideClosed((value) => !value)}
+        onToggleCreating={() => setCreating((value) => !value)}
+        onRefresh={refreshAll}
+      />
 
       {!channelKey ? (
         <EmptyState
@@ -538,77 +430,24 @@ export function TaskBoard({
         />
       ) : (
         <>
-          <div className="task-toolbar">
-            <label className="field task-search-field">
-              <span>搜索任务</span>
-              <input
-                type="search"
-                value={keyword}
-                placeholder="标题 / 分类 / ID / 负责人 / 标签"
-                aria-label="按关键字搜索任务"
-                onChange={(event) => setKeyword(event.target.value)}
-                onKeyDown={(event) => {
-                  // Esc 清空而不是退出搜索：用户常见的动作是“搜错了重来”。
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    setKeyword('');
-                  }
-                }}
-              />
-            </label>
-
-            <label className="field">
-              <span>harness_id（认领用）</span>
-              <input
-                value={harnessId}
-                list="task-harness-options"
-                placeholder="例如 win-dev-01"
-                onChange={(event) => changeHarnessId(event.target.value)}
-              />
-              <datalist id="task-harness-options">
-                {(harnesses.data ?? []).map((harness) => (
-                  <option key={harness.harness_id} value={harness.harness_id}>
-                    {harness.name}
-                  </option>
-                ))}
-              </datalist>
-            </label>
-
-            <label className="field">
-              <span>负责人筛选</span>
-              <input
-                value={assignee}
-                placeholder="模糊匹配"
-                onChange={(event) => setAssignee(event.target.value)}
-              />
-            </label>
-
-            <div className="filter-block grow">
-              <span className="filter-label">状态</span>
-              <div className="chip-group" role="group">
-                {ALL_STATUSES.map((status) => {
-                  const active = statuses.includes(status);
-                  return (
-                    <button
-                      key={status}
-                      type="button"
-                      className={active ? 'chip active' : 'chip'}
-                      aria-pressed={active}
-                      onClick={() =>
-                        setStatuses((prev) =>
-                          prev.includes(status)
-                            ? prev.filter((item) => item !== status)
-                            : [...prev, status],
-                        )
-                      }
-                    >
-                      {TASK_STATUS_LABELS[status]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <TaskBoardToolbar
+            keyword={keyword}
+            onKeywordChange={setKeyword}
+            onKeywordClear={() => setKeyword('')}
+            harnessId={harnessId}
+            harnesses={harnesses.data ?? []}
+            onHarnessChange={changeHarnessId}
+            assignee={assignee}
+            onAssigneeChange={setAssignee}
+            statuses={statuses}
+            onToggleStatus={(status) =>
+              setStatuses((prev) =>
+                prev.includes(status)
+                  ? prev.filter((item) => item !== status)
+                  : [...prev, status],
+              )
+            }
+          />
 
           {harnesses.error ? (
             <p className="warn-text">
@@ -638,6 +477,14 @@ export function TaskBoard({
             点任务行打开页面级右侧详情卡；按 <kbd>←</kbd> / <kbd>→</kbd>{' '}
             按当前树顺序翻阅上一条/下一条。认领需要先填 harness_id。
           </p>
+
+          {/* 挂到任务行的决策卡只是一窗数据；被截断时必须在树上方说明。 */}
+          {questions.data && questions.data.total > questions.data.items.length ? (
+            <p className="muted small">
+              共 {questions.data.total} 张决策卡，仅显示最近{' '}
+              {questions.data.items.length} 张
+            </p>
+          ) : null}
 
           <div className={selectedTaskId ? 'task-board-grid detail-open' : 'task-board-grid'}>
             <div className="task-tree-wrap">
@@ -689,105 +536,4 @@ export function TaskBoard({
       )}
     </section>
   );
-}
-
-/**
- * 用详情信息流算出的未读数覆盖节点上的服务端值。
- *
- * 只覆盖显式出现过的任务 id；没有覆盖的节点继续用 tree 接口返回的值。
- * 递归时保持不可变：返回新节点/新 children，不原地改 useAsync 缓存的数据。
- */
-function applyUnreadOverrides(
-  nodes: TreeNode[],
-  overrides: Record<string, number>,
-): TreeNode[] {
-  return nodes.map((node) => {
-    const overridden = overrides[node.id];
-    const next =
-      overridden === undefined ? node : { ...node, unread_count: overridden };
-    return next.children.length > 0
-      ? { ...next, children: applyUnreadOverrides(next.children, overrides) }
-      : next;
-  });
-}
-
-/** 把本地已确认的结束通知标成已读；不改服务端返回的原始树。 */
-function applyEndNoticeOverrides(
-  nodes: TreeNode[],
-  acked: Record<string, true>,
-): TreeNode[] {
-  return nodes.map((node) => {
-    const next = acked[node.id] ? { ...node, end_notice_pending: false } : node;
-    return next.children.length > 0
-      ? { ...next, children: applyEndNoticeOverrides(next.children, acked) }
-      : next;
-  });
-}
-
-function flattenTree(nodes: TreeNode[]): TaskView[] {
-  const result: TaskView[] = [];
-  const walk = (items: TreeNode[]): void => {
-    for (const node of items) {
-      result.push(node);
-      walk(node.children);
-    }
-  };
-  walk(nodes);
-  return result;
-}
-
-/**
- * 保留“命中节点及其祖先/后代”，避免筛选把树拆得看不出层级。
- *
- * 三个条件取交集：状态、负责人、搜索关键字。任一条件为空表示不限制。
- * 关键字命中父节点时保留整棵子树——用户搜的是“这条线”，
- * 而不是只要一条光秃秃的父节点；命中子节点时保留路径祖先，层级才不会断。
- */
-function filterTree(
-  nodes: TreeNode[],
-  statuses: Set<TaskStatus>,
-  assignee: string,
-  keyword: string,
-): TreeNode[] {
-  const result: TreeNode[] = [];
-  for (const node of nodes) {
-    const matches =
-      (statuses.size === 0 || statuses.has(node.status)) &&
-      (!assignee || (node.assignee ?? '').toLowerCase().includes(assignee)) &&
-      matchesTaskKeyword(node, keyword);
-    // 命中节点保留整棵子树；未命中但有命中后代的节点作为“路径祖先”保留。
-    const children = matches
-      ? node.children
-      : filterTree(node.children, statuses, assignee, keyword);
-    if (matches || children.length > 0) {
-      result.push({ ...node, children });
-    }
-  }
-  return result;
-}
-
-/**
- * 默认筛选：只保留“未结束”或“带未确认结束通知”的节点。
- *
- * 不能简单地把 done 节点连子树整段删掉：常见情况是“父任务已完成，验收时又拆出一条
- * 待办子任务”，整段删会把仍然活跃的子任务一起藏没。这里把已结束节点的子代提升一级，
- * 让活着的后代继续出现在树上；层级缩进会少一层，但仍能顺着标题找到源头。
- *
- * keepStatuses 是用户显式勾选的状态 chip：勾了“完成”就保持完成节点可见，
- * 否则默认筛选会让状态筛选看起来失效（勾完一条都没有）。
- */
-function withoutClosed(nodes: TreeNode[], keepStatuses: Set<TaskStatus>): TreeNode[] {
-  const result: TreeNode[] = [];
-  for (const node of nodes) {
-    const children = withoutClosed(node.children, keepStatuses);
-    const isClosed = node.status === 'done' || node.status === 'cancelled';
-    // 带未确认结束通知的节点即使已完成也保留：用户正是要看到“它结束了”。
-    // 先确认再隐藏，提醒不会被默认筛选吞掉。
-    if (isClosed && !node.end_notice_pending && !keepStatuses.has(node.status)) {
-      result.push(...children);
-      continue;
-    }
-    result.push({ ...node, children });
-  }
-  return result;
 }

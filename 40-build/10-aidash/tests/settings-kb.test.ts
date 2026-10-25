@@ -93,10 +93,13 @@ describe('知识库配置：PATCH /api/settings', () => {
 
     const searched = await api<{
       total: number;
+      degraded: boolean;
       items: Array<{ path: string; title: string | null }>;
     }>(a, 'GET', '/api/kb/search?q=whitelist');
     expect(searched.body.data?.total).toBeGreaterThan(0);
     expect(searched.body.data?.items[0]?.path).toBe('gateway.md');
+    // 正常路径必须明确回 degraded=false：否则前端无法区分「结果完整」和「降级结果」。
+    expect(searched.body.data?.degraded).toBe(false);
 
     const stats = await api<{ configured: boolean; root: string | null }>(
       a,
@@ -114,6 +117,30 @@ describe('知识库配置：PATCH /api/settings', () => {
     const rejected = await api(a, 'POST', '/api/kb/reindex');
     expect(rejected.status).toBe(400);
     expect(rejected.body.error?.message).toBe('KB_NOT_CONFIGURED');
+  });
+
+  it('FTS 索引表丢失时降级为 LIKE，并在响应里明确标记 degraded', async () => {
+    const { a, h } = await boot();
+    const dir = makeKbDir();
+    await api(a, 'PATCH', '/api/settings', { kb_root: dir });
+    await api(a, 'POST', '/api/kb/reindex');
+
+    // 模拟索引表损坏/升级失败。留 kb_doc：降级路径仍要能按标题/描述给出结果，
+    // 否则用户看到的就只是“搜不到”，而不是“结果可能不全”。
+    h.db.exec('DROP TABLE kb_fts');
+
+    const searched = await api<{
+      total: number;
+      degraded: boolean;
+      degraded_reason?: string;
+      items: Array<{ path: string }>;
+    }>(a, 'GET', '/api/kb/search?q=whitelist');
+
+    expect(searched.status).toBe(200);
+    expect(searched.body.data?.degraded).toBe(true);
+    expect(searched.body.data?.degraded_reason).toBe('FTS_QUERY_FAILED');
+    // LIKE 仍能命中标题，接口不至于变成空结果；但前端会看到降级提示。
+    expect(searched.body.data?.items.map((item) => item.path)).toContain('gateway.md');
   });
 
   it('llm_api_key 允许页面写入，但只进加密文件且不回显', async () => {

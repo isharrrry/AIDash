@@ -6,7 +6,7 @@ import type { Db } from '../db/connection.js';
 import type { SettingRepo } from '../repos/support-repos.js';
 import type { AppConfig } from '../config.js';
 import type { AuditService } from './audit-service.js';
-import type { SecretStore } from './secret-store.js';
+import type { SecretStore, StoredLlmKeyState } from './secret-store.js';
 
 /**
  * 运行时可调参数。
@@ -42,6 +42,29 @@ export interface PromptView {
   default_system: string;
 }
 
+/**
+ * 既有页面设置、又有同名环境变量的键。
+ *
+ * 只列“走 coalesce(persisted, config)”的普通设置；`llm_api_key` 有自己的
+ * 来源字段 key_source（file/env），且永不回显任何片段，不并进这里。
+ */
+export type EnvOverrideKey =
+  | 'enrichment_enabled'
+  | 'enrichment_timeout_ms'
+  | 'llm_endpoint'
+  | 'llm_model'
+  | 'llm_mode'
+  | 'kb_root'
+  | 'card_retention_days'
+  | 'audit_min_retention_days'
+  | 'log_retention_days';
+
+export interface EnvOverrideHint {
+  key: EnvOverrideKey;
+  /** 被页面值覆盖的环境变量名；只给名字，不给值。 */
+  env_var: string;
+}
+
 export interface SettingsView {
   enrichment: {
     enabled: boolean;
@@ -55,6 +78,13 @@ export interface SettingsView {
       key_source: 'file' | 'env' | null;
       /** 加密文件的路径；用于用户自行备份/迁移，不含任何密钥内容。 */
       key_path: string;
+      /**
+       * 页面密钥的读取状态。`unreadable` 表示「配过但解不开」，
+       * 前端应明确提示，而不是像没配一样静默回退到环境变量。
+       */
+      key_state: StoredLlmKeyState['status'];
+      /** 仅在 key_state=unreadable 时出现。 */
+      key_error?: string;
     };
     /** 知识库与模型都就绪且增强分析开启时，卡片会自动生成知识库建议。 */
     kb_suggestion_ready: boolean;
@@ -72,6 +102,8 @@ export interface SettingsView {
     lease_seconds: number;
     page_size_max: number;
     rate_limit_per_minute: number;
+    /** 令牌桶容量 = 允许的突发请求数（REQ-FN-028：60）。 */
+    rate_limit_burst: number;
   };
   server: {
     host: string;
@@ -82,6 +114,11 @@ export interface SettingsView {
   };
   // 只回“是否已配置”，不回任何片段：掩码的尾号也能被用来撞库（06 SAFE-002）。
   token: { label: string; configured: boolean };
+  /**
+   * 页面值覆盖了同名环境变量的键。只用于设置页提示“改环境变量不会生效”，
+   * 不改变任何生效值；为空数组表示没有发生覆盖。
+   */
+  env_overrides: EnvOverrideHint[];
 }
 
 export interface SettingsPatch {
@@ -106,20 +143,30 @@ export interface SettingsPatch {
 }
 
 const SETTINGS_KEY = 'runtime';
-const PERSISTED_KEYS: Array<keyof SettingsPatch> = [
-  'enrichment_enabled',
-  'enrichment_timeout_ms',
-  'llm_endpoint',
-  'llm_model',
-  'llm_mode',
-  'prompts',
-  'memory_digest_enabled',
-  'memory_digest_interval_hours',
-  'memory_digest_window_days',
-  'kb_root',
-  'card_retention_days',
-  'audit_min_retention_days',
-  'log_retention_days',
+
+/**
+ * 键 → 可能覆盖它的环境变量名。
+ *
+ * 环境变量名必须与 config.ts 的 pick() 保持一致：
+ * - 超时有两个名字，新名优先；两个都设置时提示实际生效的新名。
+ * - 记忆归纳、提示词没有环境变量入口，因此不在表里。
+ */
+const PAGE_ENV_VARS: ReadonlyArray<{
+  key: EnvOverrideKey;
+  envVars: readonly string[];
+}> = [
+  { key: 'enrichment_enabled', envVars: ['AIDASH_ENRICHMENT_ENABLED'] },
+  {
+    key: 'enrichment_timeout_ms',
+    envVars: ['AIDASH_LLM_TIMEOUT_MS', 'AIDASH_ENRICHMENT_TIMEOUT_MS'],
+  },
+  { key: 'llm_endpoint', envVars: ['AIDASH_LLM_ENDPOINT'] },
+  { key: 'llm_model', envVars: ['AIDASH_LLM_MODEL'] },
+  { key: 'llm_mode', envVars: ['AIDASH_LLM_MODE'] },
+  { key: 'kb_root', envVars: ['AIDASH_KB_ROOT'] },
+  { key: 'card_retention_days', envVars: ['AIDASH_CARD_RETENTION_DAYS'] },
+  { key: 'audit_min_retention_days', envVars: ['AIDASH_AUDIT_MIN_RETENTION_DAYS'] },
+  { key: 'log_retention_days', envVars: ['AIDASH_LOG_RETENTION_DAYS'] },
 ];
 
 export const PROMPT_KEYS: PromptKey[] = [
@@ -291,6 +338,11 @@ export class SettingsService {
     const llmConfigured = Boolean(
       this.runtime.llmEndpoint && this.runtime.llmModel && this.runtime.llmApiKey,
     );
+    // 重新读 setting 表而不是只看 this.runtime：update() 会先改 setting 再切 runtime，
+    // 而“哪些键来自页面”属于持久化事实，直接读库能保证 GET 与 PATCH 的提示一致。
+    const persisted = this.settings.get<SettingsPatch>(SETTINGS_KEY) ?? {};
+    // 每次读取都重新检查：用户可能在服务运行期间换掉/删掉了主密钥。
+    const keyState = this.secretStore.readLlmKeyState();
     return {
       enrichment: {
         enabled: this.runtime.enrichmentEnabled,
@@ -303,6 +355,8 @@ export class SettingsService {
           configured: llmConfigured,
           key_source: this.runtime.llmApiKeySource,
           key_path: this.secretStore.filePath,
+          key_state: keyState.status,
+          ...(keyState.status === 'unreadable' ? { key_error: keyState.reason } : {}),
         },
         kb_suggestion_ready: Boolean(
           this.runtime.kbRoot && llmConfigured && this.runtime.enrichmentEnabled,
@@ -334,6 +388,8 @@ export class SettingsService {
         lease_seconds: this.config.leaseSeconds,
         page_size_max: this.config.pageSizeMax,
         rate_limit_per_minute: this.config.rateLimitPerMinute,
+        // 一起暴露：只报速率不报容量，前端会以为限额是「每分钟 300 个」，实际还能一口气突发 60。
+        rate_limit_burst: this.config.rateLimitBurst,
       },
       server: {
         host: this.config.host,
@@ -346,6 +402,7 @@ export class SettingsService {
         label: this.config.tokenLabel,
         configured: Boolean(this.config.token),
       },
+      env_overrides: envOverrideHints(persisted, this.config.aidashEnvKeys),
     };
   }
 
@@ -353,23 +410,23 @@ export class SettingsService {
     const next: SettingsPatch = {};
 
     // 密钥单独处理：不进 next，因此不会被写进 setting.runtime。
-    // 注意 llm_api_key 不在 PERSISTED_KEYS 里，即便旧调用方误传也不会落库。
+    // 即便旧调用方把 llm_api_key 混在普通 patch 里传进来，也不会落库。
+    //
+    // 这里只做纯校验、不落盘：同一个请求里还有别的字段要校验，
+    // 任何一个非法都必须整体失败，不能出现「报错但密钥已经被换掉」。
     const apiKeyTouched = Object.prototype.hasOwnProperty.call(patch, 'llm_api_key');
     let keyAction: 'set' | 'clear' | null = null;
+    let nextApiKey: string | null = null;
     if (apiKeyTouched) {
       const raw = patch.llm_api_key;
       if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) {
-        this.secretStore.writeLlmKey(null);
         keyAction = 'clear';
       } else if (typeof raw === 'string') {
-        this.secretStore.writeLlmKey(assertApiKey(raw));
+        nextApiKey = assertApiKey(raw);
         keyAction = 'set';
       } else {
         throw new AppError('INVALID_ARGUMENT', 'INVALID_LLM_API_KEY');
       }
-      const stored = this.secretStore.readLlmKey();
-      this.runtime.llmApiKey = stored ?? this.config.llm.apiKey;
-      this.runtime.llmApiKeySource = stored ? 'file' : this.config.llm.apiKey ? 'env' : null;
     }
 
     if (patch.enrichment_enabled !== undefined) {
@@ -428,12 +485,21 @@ export class SettingsService {
       next.card_retention_days = assertRange(patch.card_retention_days, 30, 3650, 'card_retention_days');
     }
     if (patch.audit_min_retention_days !== undefined) {
-      next.audit_min_retention_days = assertRange(
+      const requested = assertRange(
         patch.audit_min_retention_days,
         30,
         3650,
         'audit_min_retention_days',
       );
+      // 审计保留期只能调长。范围校验挡不住「从 730 改成 30」：
+      // 那等于允许一次设置就把两年的审计证据提前销毁，而清理任务会照做。
+      if (requested < this.runtime.auditMinRetentionDays) {
+        throw new AppError('INVALID_ARGUMENT', 'AUDIT_RETENTION_CANNOT_SHRINK', {
+          current: this.runtime.auditMinRetentionDays,
+          requested,
+        });
+      }
+      next.audit_min_retention_days = requested;
     }
     if (patch.log_retention_days !== undefined) {
       next.log_retention_days = assertRange(patch.log_retention_days, 7, 365, 'log_retention_days');
@@ -442,36 +508,80 @@ export class SettingsService {
     const merged: SettingsPatch = { ...this.settings.get<SettingsPatch>(SETTINGS_KEY), ...next };
     // 防御历史数据：早期版本没有这个字段，但若有人手工写入，也不能让它留在库里。
     delete merged.llm_api_key;
-    this.settings.set(SETTINGS_KEY, merged, this.clock.now());
 
-    this.runtime = {
-      ...this.runtime,
-      enrichmentEnabled: coalesce(merged.enrichment_enabled, this.runtime.enrichmentEnabled),
-      enrichmentTimeoutMs: coalesce(merged.enrichment_timeout_ms, this.runtime.enrichmentTimeoutMs),
-      llmEndpoint: merged.llm_endpoint !== undefined ? merged.llm_endpoint : this.runtime.llmEndpoint,
-      llmModel: merged.llm_model !== undefined ? merged.llm_model : this.runtime.llmModel,
-      llmMode: normalizeMode(merged.llm_mode, this.runtime.llmMode),
-      prompts: normalizePrompts(merged.prompts ?? this.runtime.prompts),
-      kbRoot: merged.kb_root !== undefined ? merged.kb_root : this.runtime.kbRoot,
-      memoryDigestEnabled: coalesce(
-        merged.memory_digest_enabled,
-        this.runtime.memoryDigestEnabled,
-      ),
-      memoryDigestIntervalHours: coalesce(
-        merged.memory_digest_interval_hours,
-        this.runtime.memoryDigestIntervalHours,
-      ),
-      memoryDigestWindowDays: coalesce(
-        merged.memory_digest_window_days,
-        this.runtime.memoryDigestWindowDays,
-      ),
-      cardRetentionDays: coalesce(merged.card_retention_days, this.runtime.cardRetentionDays),
-      auditMinRetentionDays: coalesce(
-        merged.audit_min_retention_days,
-        this.runtime.auditMinRetentionDays,
-      ),
-      logRetentionDays: coalesce(merged.log_retention_days, this.runtime.logRetentionDays),
-    };
+    // 所有字段都已通过纯校验，从这里开始才允许产生副作用。
+    // 顺序：先写密钥并保留旧值 → 再写数据库 → 最后切换运行时。
+    // 中途失败必须把密钥恢复原状，否则页面报「保存失败」、凭证却已被换掉（D-5）。
+    const previousRuntime = this.runtime;
+    const previousKey = apiKeyTouched ? this.secretStore.readLlmKey() : null;
+    let keyWritten = false;
+    try {
+      if (keyAction) {
+        this.secretStore.writeLlmKey(nextApiKey);
+        keyWritten = true;
+        this.runtime = {
+          ...this.runtime,
+          llmApiKey: keyAction === 'set' ? nextApiKey : this.config.llm.apiKey,
+          llmApiKeySource: keyAction === 'set' ? 'file' : this.config.llm.apiKey ? 'env' : null,
+        };
+      }
+
+      this.settings.set(SETTINGS_KEY, merged, this.clock.now());
+
+      this.runtime = {
+        ...this.runtime,
+        enrichmentEnabled: coalesce(merged.enrichment_enabled, this.runtime.enrichmentEnabled),
+        enrichmentTimeoutMs: coalesce(
+          merged.enrichment_timeout_ms,
+          this.runtime.enrichmentTimeoutMs,
+        ),
+        // 页面把值清成 null 时，要立刻回退到配置文件/环境变量的原始值；
+        // 只写 null 会变成“本次禁用、重启后又回来”，和文档里的优先级自相矛盾。
+        llmEndpoint:
+          merged.llm_endpoint !== undefined
+            ? coalesce(merged.llm_endpoint, this.config.llm.endpoint)
+            : this.runtime.llmEndpoint,
+        llmModel:
+          merged.llm_model !== undefined
+            ? coalesce(merged.llm_model, this.config.llm.model)
+            : this.runtime.llmModel,
+        llmMode: normalizeMode(merged.llm_mode, this.runtime.llmMode),
+        prompts: normalizePrompts(merged.prompts ?? this.runtime.prompts),
+        kbRoot:
+          merged.kb_root !== undefined
+            ? coalesce(merged.kb_root, this.config.kbRoot)
+            : this.runtime.kbRoot,
+        memoryDigestEnabled: coalesce(
+          merged.memory_digest_enabled,
+          this.runtime.memoryDigestEnabled,
+        ),
+        memoryDigestIntervalHours: coalesce(
+          merged.memory_digest_interval_hours,
+          this.runtime.memoryDigestIntervalHours,
+        ),
+        memoryDigestWindowDays: coalesce(
+          merged.memory_digest_window_days,
+          this.runtime.memoryDigestWindowDays,
+        ),
+        cardRetentionDays: coalesce(merged.card_retention_days, this.runtime.cardRetentionDays),
+        auditMinRetentionDays: coalesce(
+          merged.audit_min_retention_days,
+          this.runtime.auditMinRetentionDays,
+        ),
+        logRetentionDays: coalesce(merged.log_retention_days, this.runtime.logRetentionDays),
+      };
+    } catch (error) {
+      if (keyWritten) {
+        // 回滚本身也可能失败（磁盘满、权限问题）；不要用它覆盖原始错误。
+        try {
+          this.secretStore.writeLlmKey(previousKey);
+        } catch {
+          // 保留原始错误，让调用方看到真正的失败原因。
+        }
+      }
+      this.runtime = previousRuntime;
+      throw error;
+    }
 
     this.audit.record(ctx, 'settings.update', 'ok', 'setting', SETTINGS_KEY, {
       keys: Object.keys(next),
@@ -485,16 +595,33 @@ export class SettingsService {
     return this.view();
   }
 
-  /** 启动时记录一次生效配置（不含任何密钥），便于事后核对。 */
-  effectiveKeys(): string[] {
-    return PERSISTED_KEYS.filter(
-      (key) => key in (this.settings.get<SettingsPatch>(SETTINGS_KEY) ?? {}),
-    );
-  }
 }
 
 function coalesce<T>(value: T | undefined | null, fallback: T): T {
   return value === undefined || value === null ? fallback : value;
+}
+
+/**
+ * 找出“页面值已经盖住同名环境变量”的键。
+ *
+ * 判定只做三件事：页面值确实存在（非 undefined/null）、对应环境变量确实被提供、
+ * 两者相撞。它不参与取值，`coalesce` 仍然是唯一的生效逻辑——这样提示出错时
+ * 最坏只是少一条说明，不会改变系统行为。
+ */
+function envOverrideHints(
+  persisted: SettingsPatch,
+  aidashEnvKeys: readonly string[],
+): EnvOverrideHint[] {
+  const providedEnv = new Set(aidashEnvKeys);
+  const hints: EnvOverrideHint[] = [];
+  for (const item of PAGE_ENV_VARS) {
+    const value = persisted[item.key];
+    if (value === undefined || value === null) continue;
+    // 新环境变量名排在前面：两个别名同时存在时，config.ts 也是新名先生效。
+    const envVar = item.envVars.find((name) => providedEnv.has(name));
+    if (envVar) hints.push({ key: item.key, env_var: envVar });
+  }
+  return hints;
 }
 
 function normalizePrompts(value: Partial<Record<PromptKey, string>> | undefined): Record<PromptKey, string> {

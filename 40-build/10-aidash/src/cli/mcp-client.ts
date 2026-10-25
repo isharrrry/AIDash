@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { AuthError, BusinessError, CliError, TransportError } from './errors.js';
 import { redact, truncate } from './log.js';
 import { asNumber, asRecord, asString } from './mcp-parse.js';
@@ -126,6 +126,15 @@ function classifyMcpError(error: unknown): CliError {
   if (error instanceof CliError) return error;
 
   if (error instanceof McpError) {
+    // SDK 客户端侧的 -32000/-32001 表示连接关闭/请求超时，不是业务 CONFLICT、
+    // 更不是 UNAUTHORIZED。必须先于 mapJsonRpcCode 判断：否则一次网络慢就会被
+    // 当成 401 让值守壳停机，与 REQ-FN-050「超时应重试/退避」相反。
+    if (error.code === ErrorCode.ConnectionClosed || error.code === ErrorCode.RequestTimeout) {
+      const transportMessage = redact(
+        truncate(error.message || String(error.code), ERROR_MESSAGE_LIMIT),
+      );
+      return new TransportError(`MCP 传输失败：${transportMessage}`, { retryable: true });
+    }
     const data = asRecord(error.data);
     const mappedCode = mapJsonRpcCode(error.code);
     const payload: Record<string, unknown> = {

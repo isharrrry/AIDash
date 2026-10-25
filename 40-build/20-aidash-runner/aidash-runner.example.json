@@ -1,0 +1,74 @@
+{
+  "aidash_url": "http://127.0.0.1:8787/mcp",
+  "token_env": "AIDASH_TOKEN",
+  "harness_id": "watch-my-machine",
+  "name": "my-machine",
+  "host": "",
+  "capabilities": [],
+  "channels": [],
+  "poll_interval_seconds": 5,
+  "lease_seconds": 900,
+  "heartbeat_interval_seconds": 60,
+  "gap_seconds": 2,
+  "command_timeout_seconds": 1800,
+  "data_dir": "",
+  "log_file": "",
+  "env_passthrough": [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "SystemRoot",
+    "ComSpec",
+    "PATHEXT",
+    "WINDIR",
+    "TEMP",
+    "TMP"
+  ],
+  "commands": [
+    {
+      "name": "demo-echo",
+      "match": {
+        "tags": ["aidash-runner-demo"],
+        "match_all": false
+      },
+      "run": {
+        "argv": [
+          "node",
+          "-e",
+          "const fs=require('node:fs');const t=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));console.log('收到任务',t.id,t.title);",
+          "{task_file}"
+        ],
+        "input": "file",
+        "stdin": "task_json",
+        "timeout_seconds": 300,
+        "env": {},
+        "env_passthrough": [],
+        "result_file": ""
+      }
+    },
+    {
+      "name": "demo-with-result",
+      "match": {
+        "channel_key": "agent/*",
+        "tags": ["aidash-runner-result"],
+        "priority": ["P0", "P1"],
+        "match_all": false
+      },
+      "run": {
+        "argv": [
+          "node",
+          "-e",
+          "const fs=require('node:fs');const t=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));fs.writeFileSync(process.argv[2],JSON.stringify({summary:'已处理 '+t.id,detail_md:'由示例规则生成',result:'success'}));",
+          "{task_file}",
+          "aidash-runner-result.json"
+        ],
+        "cwd": ".",
+        "input": "file",
+        "timeout_seconds": 600,
+        "env": {},
+        "env_passthrough": [],
+        "result_file": "aidash-runner-result.json"
+      }
+    }
+  ]
+}

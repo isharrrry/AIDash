@@ -3,6 +3,7 @@
  * 端点以任务给定的 `/api/*` 契约为准；返回类型复用 shared/types 的视图类型。
  */
 import { apiRequest, buildQuery } from './client';
+import { TASK_TREE_MAX_DEPTH } from '../lib/task-tree';
 import type {
   AssistantMemoryView,
   AuditRow,
@@ -19,7 +20,6 @@ import type {
   KbDocView,
   KbSearchHit,
   KbSearchResult,
-  KbStatsView,
   LlmTestView,
   MemoryDigestRunView,
   MemoryProjectView,
@@ -34,7 +34,6 @@ import type {
   SettingsPatchView,
   SettingsView,
   TaskClaimResponse,
-  TaskStatus,
   TaskView,
   TreeNode,
 } from '../types';
@@ -47,6 +46,13 @@ export interface CardQuery {
   statuses?: CardStatus[];
   priorities?: Priority[];
   include_archived?: boolean;
+  /**
+   * 是否要完整正文（默认 false）。
+   *
+   * 列表默认只给 preview_md，避免一页 200 张卡把全文拉回来；
+   * 任务信息流等确实要显示全文的调用方显式传 true。
+   */
+  include_body?: boolean;
   q?: string;
   /** 只看某个任务下的卡：任务详情信息流用。 */
   task_id?: string;
@@ -119,6 +125,7 @@ export function listCards(query: CardQuery = {}): Promise<Page<CardView>> {
       status: query.statuses,
       priority: query.priorities,
       include_archived: query.include_archived ? true : undefined,
+      include_body: query.include_body ? true : undefined,
       q: noEmpty(query.q),
       task_id: noEmpty(query.task_id),
       unassigned: query.unassigned ? true : undefined,
@@ -190,24 +197,6 @@ export function batchAnswer(items: BatchAnswerItem[]): Promise<BatchAnswerResult
     method: 'POST',
     body: { items },
   });
-}
-
-export interface TaskQuery {
-  channel_key?: string;
-  statuses?: TaskStatus[];
-  assignee?: string;
-  page?: number;
-}
-
-export function listTasks(query: TaskQuery = {}): Promise<Page<TaskView>> {
-  return apiRequest<Page<TaskView>>(
-    `/tasks${buildQuery({
-      channel_key: noEmpty(query.channel_key),
-      status: query.statuses,
-      assignee: noEmpty(query.assignee),
-      page: query.page,
-    })}`,
-  );
 }
 
 export interface TaskCreateBody {
@@ -318,7 +307,11 @@ export function copyTask(taskId: string, newParentId: string | null): Promise<Ta
   });
 }
 
-export function getTaskTree(channelKey: string, depth = 10): Promise<TreeNode[]> {
+/** depth 默认值与 TaskBoard 共用同一常量，避免两处各写一个数字后悄悄漂移。 */
+export function getTaskTree(
+  channelKey: string,
+  depth = TASK_TREE_MAX_DEPTH,
+): Promise<TreeNode[]> {
   return apiRequest<TreeNode[]>(
     `/tasks/tree${buildQuery({ channel_key: channelKey, depth })}`,
   );
@@ -431,7 +424,7 @@ function toKbHit(value: unknown): KbSearchHit {
   };
 }
 
-/** 兼容 {items} 与 {results} 两种 KB 搜索包络。 */
+/** KB 搜索；服务端固定返回 `{items,total,degraded?,degraded_reason?}`。 */
 export async function searchKb(query: KbSearchQuery): Promise<KbSearchResult> {
   const data = await apiRequest<unknown>(
     `/kb/search${buildQuery({
@@ -442,29 +435,19 @@ export async function searchKb(query: KbSearchQuery): Promise<KbSearchResult> {
     })}`,
   );
   const row = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
-  const raw = Array.isArray(row.items) ? row.items : Array.isArray(row.results) ? row.results : [];
+  const raw = Array.isArray(row.items) ? row.items : [];
   const items = raw.map(toKbHit);
   return {
     items,
     total: typeof row.total === 'number' ? row.total : items.length,
-    kbStatus: typeof row.kb_status === 'string' ? row.kb_status : undefined,
+    // 服务端只在降级时回 true。
+    degraded: row.degraded === true,
+    degraded_reason: typeof row.degraded_reason === 'string' ? row.degraded_reason : undefined,
   };
 }
 
 export function getKbDoc(path: string): Promise<KbDocView> {
   return apiRequest<KbDocView>(`/kb/doc${buildQuery({ path })}`);
-}
-
-export function listKbDocs(query: { page?: number; page_size?: number; type?: string } = {}): Promise<
-  Page<KbDocView>
-> {
-  return apiRequest<Page<KbDocView>>(
-    `/kb/docs${buildQuery({ page: query.page, page_size: query.page_size, type: query.type })}`,
-  );
-}
-
-export function getKbStats(): Promise<KbStatsView> {
-  return apiRequest<KbStatsView>('/kb/stats');
 }
 
 export function reindexKb(): Promise<unknown> {
@@ -487,10 +470,6 @@ export function listReports(query: ReportQuery = {}): Promise<Page<ReportView>> 
       page_size: query.page_size,
     })}`,
   );
-}
-
-export function getReport(reportId: string): Promise<ReportView> {
-  return apiRequest<ReportView>(`/reports/${encodeURIComponent(reportId)}`);
 }
 
 /**

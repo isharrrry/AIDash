@@ -8,7 +8,9 @@
 [CmdletBinding()]
 param(
   [switch]$DryRun,
-  [int]$Port = 0
+  [int]$Port = 0,
+  # 绑定地址；默认保持回环。跨机访问请同时配置 TLS/反向代理。
+  [string]$BindHost = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,8 +22,12 @@ $backupDir = Join-Path $repoRoot '40-build/10-aidash/backups'
 $staticDir = Join-Path $repoRoot '40-build/10-aidash/dist/web'
 $serverEntry = Join-Path $repoRoot '40-build/10-aidash/dist/server/main.js'
 
+if (-not $env:AIDASH_TOKEN -and $env:AIDASH_PASSPHRASE) {
+  Write-Warning 'AIDASH_PASSPHRASE is deprecated; using it as AIDASH_TOKEN.'
+  $env:AIDASH_TOKEN = $env:AIDASH_PASSPHRASE
+}
 if (-not $env:AIDASH_TOKEN) {
-  throw 'AIDASH_TOKEN is not set. Set it as a user environment variable and reopen the terminal; never put it in this repository.'
+  throw 'Set AIDASH_TOKEN as a user environment variable (a short passphrase is fine, >=8 chars), then reopen the terminal; never put secrets in this repository.'
 }
 if (-not (Test-Path $serverEntry)) {
   throw "Server build not found: $serverEntry. Run 'pnpm -C 40-build build' first."
@@ -31,6 +37,7 @@ $env:AIDASH_DB_PATH = $dbPath
 $env:AIDASH_BACKUP_DIR = $backupDir
 $env:AIDASH_STATIC_DIR = $staticDir
 if ($Port -gt 0) { $env:AIDASH_PORT = "$Port" }
+if ($BindHost) { $env:AIDASH_HOST = $BindHost }
 
 $listenPort = if ($Port -gt 0) {
   $Port
@@ -39,12 +46,18 @@ $listenPort = if ($Port -gt 0) {
 } else {
   8787
 }
+$listenHost = if ($env:AIDASH_HOST) { $env:AIDASH_HOST } else { '127.0.0.1' }
 
 Write-Host 'AIDash startup paths (resolved):'
 Write-Host "  AIDASH_DB_PATH     = $env:AIDASH_DB_PATH"
 Write-Host "  AIDASH_BACKUP_DIR  = $env:AIDASH_BACKUP_DIR"
 Write-Host "  AIDASH_STATIC_DIR  = $env:AIDASH_STATIC_DIR"
-Write-Host "  listen             = http://127.0.0.1:$listenPort"
+Write-Host '  auth               = AIDASH_TOKEN'
+Write-Host "  listen             = http://${listenHost}:$listenPort"
+
+if ($listenHost -ne '127.0.0.1' -and $listenHost -ne '::1' -and $listenHost -ne 'localhost') {
+  Write-Warning "绑定 $listenHost 会允许局域网访问；请使用 TLS/反向代理，并设置足够强的 AIDASH_TOKEN。"
+}
 
 if (-not (Test-Path $dbPath)) {
   Write-Warning "Database file does not exist: $dbPath"
@@ -60,6 +73,14 @@ if ($DryRun) {
   Write-Host 'DryRun: paths checked, server not started.'
   exit 0
 }
+
+$runnerBin = Join-Path $repoRoot '40-build/20-aidash-runner/bin/aidash-runner.mjs'
+Write-Host ''
+Write-Host 'Runner quick start (another terminal):'
+Write-Host "  node `"$runnerBin`" init --command `"claude --dangerously-skip-permissions -p \\`"Read and execute {task_file}\\`"`" --cwd ."
+Write-Host "  node `"$runnerBin`" start --daemon --ensure-channel devhost/myproj/topic --channel-title `"我的话题`" --create-task `"首条任务`""
+Write-Host "  node `"$runnerBin`" start --daemon --ensure-channel devhost/myproj/topic   # 回到同一通道"
+Write-Host '  (令牌：AIDASH_TOKEN，或 --token-file；完整说明见 20-aidash-runner/README.md)'
 
 Push-Location $repoRoot
 try {

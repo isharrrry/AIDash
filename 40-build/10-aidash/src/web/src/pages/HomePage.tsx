@@ -126,15 +126,17 @@ export function HomePage(): ReactElement {
     });
   }, [queue.data]);
 
-  const reloadAll = useCallback(() => {
-    digest.reload();
-    queue.reload();
-    legacy.reload();
-    reloadChannels();
+  const reloadAll = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      digest.reload(),
+      queue.reload(),
+      legacy.reload(),
+      reloadChannels(),
+    ]);
   }, [digest.reload, queue.reload, legacy.reload, reloadChannels]);
 
   // SSE 未实现时的 30 秒轮询兜底；页面不可见时 hook 内部会跳过请求。
-  usePolling(() => reloadAll(), 30000);
+  usePolling(reloadAll, 30000);
 
   const updateFilters = (patch: Partial<CardFilters>): void => {
     setFilters((prev) => ({ ...prev, ...patch }));

@@ -3,7 +3,13 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "AIDash V2.0 — 单用户 AI 决策面板（Web + MCP + SQLite）",
+  "description": "AIDash — 多 Agent 协作的交互与决策层（Web + MCP + SQLite + 值守壳）",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/the50w/aidash.git"
+  },
+  "homepage": "https://gitee.com/the50w/aidash",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -19,8 +25,11 @@
     "cli:build": "node 00-platform/tools/build-cli.mjs",
     "test": "vitest run --config 00-platform/config/vitest.config.ts",
     "test:watch": "vitest --config 00-platform/config/vitest.config.ts",
+    "test:runner": "pnpm --filter aidash-runner test",
+    "test:deploy": "node --test \"../60-deliver/scripts/tests/*.test.mjs\"",
     "coverage": "vitest run --config 00-platform/config/vitest.config.ts --coverage",
-    "check": "pnpm typecheck && pnpm test"
+    "e2e": "node ../50-verify/e2e/run.mjs",
+    "check": "pnpm typecheck && pnpm test && pnpm test:runner && pnpm test:deploy"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -35,6 +44,9 @@
     "@types/node": "^24.10.0",
     "@vitest/coverage-v8": "5.0.5",
     "esbuild": "0.28.2",
+    "jsdom": "^30.1.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "tsx": "^4.20.0",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

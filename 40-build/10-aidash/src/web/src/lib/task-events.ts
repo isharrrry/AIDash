@@ -16,6 +16,7 @@ export type TaskEvent =
   | 'complete'
   | 'fail'
   | 'cancel'
+  | 'retry'
   | 'defer'
   | 'undefer'
   | 'flag_risk'
@@ -29,6 +30,7 @@ export const EVENT_LABELS: Record<TaskEvent, string> = {
   complete: '完成',
   fail: '失败',
   cancel: '取消',
+  retry: '重新排队',
   defer: '暂缓 / 排期',
   undefer: '取消暂缓',
   flag_risk: '标记隐患',
@@ -49,13 +51,18 @@ export const ALLOWED_EVENTS: Record<TaskStatus, TaskEvent[]> = {
   in_progress: ['complete', 'block', 'fail', 'cancel'],
   blocked: ['unblock', 'cancel'],
   done: [],
-  failed: [],
+  // failed 不是死状态：允许“重新排队”回到 pending（服务端只接受这一条出口）。
+  // done/cancelled 仍没有状态事件；两者只能靠覆盖层补记隐患等事后信息。
+  failed: ['retry'],
   cancelled: [],
 };
 
 const TOKEN_EVENTS: TaskEvent[] = ['start', 'block', 'unblock', 'complete', 'fail'];
-/** flag_risk 必须写清“留了什么隐患”，否则复盘时无从判断。unflag_risk 的说明可选。 */
-export const REASON_EVENTS: TaskEvent[] = ['block', 'fail', 'defer', 'flag_risk'];
+/**
+ * flag_risk 必须写清“留了什么隐患”，否则复盘时无从判断。unflag_risk 的说明可选。
+ * retry 也必须写理由：重新排队会让任务再次被认领，下一位执行者需要知道上一轮为什么失败。
+ */
+export const REASON_EVENTS: TaskEvent[] = ['block', 'fail', 'retry', 'defer', 'flag_risk'];
 /** cancel 只在已认领状态下需要令牌（同 state-machine.cancelNeedsToken）。 */
 const CLAIMED_STATUSES: TaskStatus[] = ['claimed', 'in_progress', 'blocked'];
 

@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import type { Server } from 'node:http';
 import { AppError } from '../shared/errors.js';
 import { systemClock } from '../shared/time.js';
-import { loadConfig } from './config.js';
+import { enforceBackupRetention } from './backup-retention.js';
+import { isLoopbackHost, loadConfig } from './config.js';
 import { inspectEmptyDb, resolveStartupPaths } from './startup.js';
 import type { AppContext } from './context.js';
 import { openDb, type Db } from './db/connection.js';
@@ -14,6 +15,7 @@ import { createLogger, type Logger } from './log.js';
 import { AssistantMemoryRepo } from './repos/assistant-memory-repo.js';
 import { ChannelRepo } from './repos/channel-repo.js';
 import { CardRepo } from './repos/card-repo.js';
+import { MaterialRepo } from './repos/material-repo.js';
 import { MemoryDigestRepo } from './repos/memory-digest-repo.js';
 import { MemoryRepo } from './repos/memory-repo.js';
 import { ReportRepo } from './repos/report-repo.js';
@@ -56,19 +58,48 @@ const SHUTDOWN_GRACE_MS = 10_000;
 export async function main(): Promise<void> {
   const config = loadConfig();
   const log = createLogger(config.logLevel);
+  // 跨机访问是显式选择，但不能悄无声息：局域网里的明文 HTTP 会让
+  // 令牌/口令在链路上裸奔。只在启动时告警一次，不阻断用户配置。
+  if (!isLoopbackHost(config.host)) {
+    log.warn('lan_exposure', {
+      host: config.host,
+      hint: '仅建议在可信局域网使用；跨网段请配 TLS 反向代理',
+    });
+  }
+  if (process.env.AIDASH_PASSPHRASE && !process.env.AIDASH_TOKEN) {
+    log.warn('passphrase_deprecated', {
+      hint: 'AIDASH_PASSPHRASE 已弃用；请改用 AIDASH_TOKEN（可以直接填同一句短口令）',
+    });
+  }
   const clock = systemClock;
   // 先解析再建库：相对路径会随启动目录漂移，打印绝对路径才能确认连的是哪个库。
   const paths = resolveStartupPaths(config);
   refuseSilentEmptyDb(paths.dbPath, paths.backupDir, config.allowEmptyDb, log);
   const db = openDb(paths.dbPath);
 
+  let backupOk = true;
   try {
     await backupBeforeMigration(db, paths.dbPath, paths.backupDir, log);
   } catch (error) {
     // 备份失败不阻断启动，但必须让人知道：这是回滚能力的降级。
+    backupOk = false;
     log.warn('pre_migration_backup_failed', {
       error: error instanceof Error ? error : new Error(String(error)),
     });
+  }
+
+  if (backupOk && paths.dbPath !== ':memory:') {
+    // 清理失败只告警：保留策略是磁盘运维，不能成为服务起不来的新理由。
+    // 备份失败时先不清理，避免旧的回滚点被删掉后新的又没生成。
+    enforceBackupRetention(
+      {
+        backupDir: paths.backupDir,
+        dbPath: paths.dbPath,
+        retentionDays: config.backupRetentionDays,
+        minKeep: config.backupMinKeep,
+      },
+      log,
+    );
   }
 
   const migration = migrate(db, { now: clock.now() });
@@ -98,6 +129,9 @@ export async function main(): Promise<void> {
       static_dir: paths.staticDir,
       kb_configured: ctx.services.kb.isConfigured(),
     });
+    // 首轮 KB 索引放在 listen 之后：端口先可用，索引异步分批跑。
+    // 放在 worker.start() 里会让文档多的库在“监听成功”之前就占住事件循环。
+    worker.indexKb();
   });
 
   installShutdown({ server, db, worker, ctx, log });
@@ -117,6 +151,7 @@ export function buildContext(
     memory: new MemoryRepo(db),
     assistantMemory: new AssistantMemoryRepo(db),
     memoryDigest: new MemoryDigestRepo(db),
+    materials: new MaterialRepo(db),
     reports: new ReportRepo(db),
     artifacts: new ArtifactRepo(db),
     harnesses: new HarnessRepo(db),
@@ -128,6 +163,13 @@ export function buildContext(
 
   const audit = new AuditService(repos.audit, clock);
   const secretStore = new SecretStore(config.secretDir);
+  // 启动时就要把「配过但解不开」喊出来：否则增强分析会悄悄回退到环境变量或直接停用，
+  // 用户只会在某天发现分析质量变差，却不知道密钥早在换机时丢了。
+  // 只告警不拒绝启动：读接口、卡片、任务等核心功能并不依赖 LLM 密钥。
+  const storedKeyState = secretStore.readLlmKeyState();
+  if (storedKeyState.status === 'unreadable') {
+    log.warn('secret_store_unreadable', { dir: config.secretDir, reason: storedKeyState.reason });
+  }
   const settings = new SettingsService(config, repos.setting, db, audit, clock, secretStore);
   // 先建记忆服务再建 LlmService：LLM 的每次调用都要在 system 末尾追加 AIDash 记忆。
   // 反过来会让 LlmService 依赖一个尚未构造的对象，只能靠延迟 setter，反而更难追踪。
@@ -139,7 +181,7 @@ export function buildContext(
   });
   const llm = new LlmService(settings, assistantMemory);
   // kb_root 走 getter，设置页改完立即生效，不需要重启。
-  const kb = new KbService(() => settings.current().kbRoot, repos.kb, clock);
+  const kb = new KbService(() => settings.current().kbRoot, repos.kb, clock, log);
   // 通道在线阈值与 harness 心跳共用同一个配置：用户不希望设置页说“离线”
   // 而通道树还转圈。配置单位是秒，这里换算成毫秒传给纯计算的服务层。
   const channels = new ChannelService(
@@ -210,6 +252,7 @@ export function buildContext(
   const reports = new ReportService({
     db,
     reports: repos.reports,
+    materials: repos.materials,
     llm,
     settings,
     audit,
@@ -322,6 +365,16 @@ function installShutdown(deps: {
     deps.ctx.services.enrichment.stop();
     deps.ctx.services.memoryDigest.stop();
 
+    // 后台任务不是“停掉定时器”就结束了：增强/记忆/汇报都已经发出模型请求，
+    // abort 后 catch 分支还要写失败状态与运行记录。必须在 db.close() 之前等它们收尾。
+    const background = Promise.allSettled([
+      deps.ctx.services.reports.shutdown(),
+      deps.ctx.services.enrichment.waitForIdle(),
+      deps.ctx.services.memoryDigest.waitForIdle(),
+      // 异步 KB 索引也可能正在写库：stop() 已 abort，这里等它退出后再 db.close()。
+      deps.worker.waitForIdle(),
+    ]);
+
     const force = setTimeout(() => {
       deps.log.warn('shutdown_forced');
       process.exit(1);
@@ -329,6 +382,7 @@ function installShutdown(deps: {
     force.unref();
 
     await new Promise<void>((resolve) => deps.server.close(() => resolve()));
+    await background;
     deps.db.close();
     clearTimeout(force);
     deps.log.info('shutdown_done');

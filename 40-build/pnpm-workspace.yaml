@@ -1,5 +1,6 @@
 packages:
   - "10-aidash/src/web"
+  - "20-aidash-runner"
 allowBuilds:
   # better-sqlite3 需要编译原生模块；esbuild 是 vitest/tsx 的运行时依赖。
   # 两者都是本仓库的已知依赖，显式允许，避免 pnpm 的构建脚本提示卡住 CI。

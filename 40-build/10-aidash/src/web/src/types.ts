@@ -81,40 +81,26 @@ export type {
   TreeNode,
 };
 
-/**
- * 健康检查返回结构。
- *
- * 服务端当前返回 `{status, version, uptime_seconds, db:{path,size_bytes},
- * audit_chain:{ok,broken_at?}, waiting_requests}`；设计文档里还出现过
- * 字符串 db/kb 与 queue_backlog 等扁平字段。这里把两种形状都收进来，
- * 页面再按类型收窄展示，避免把对象直接交给 React 渲染而崩溃。
- */
+/** 健康检查返回结构；服务端只返回这一种形状。 */
 export interface HealthDbView {
-  path?: string;
-  size_bytes?: number;
-  [key: string]: unknown;
+  path: string;
+  size_bytes: number;
 }
 
 export interface HealthAuditChain {
   ok: boolean;
   broken_at?: number;
-  [key: string]: unknown;
+  /** 本次真实校验发生的时刻；缓存命中时仍是上一次校验的时间。 */
+  checked_at: string;
 }
 
 export interface HealthView {
-  ok?: boolean;
-  status?: string;
-  db?: string | HealthDbView;
-  kb?: string;
-  audit_chain?: boolean | HealthAuditChain;
-  waiting_requests?: number;
-  schema_version?: number | string;
-  queue_backlog?: number;
-  pending_cards?: number;
-  enrichment_failures?: number;
-  uptime_seconds?: number;
-  version?: string;
-  [key: string]: unknown;
+  status: string;
+  db: HealthDbView;
+  audit_chain: HealthAuditChain;
+  waiting_requests: number;
+  uptime_seconds: number;
+  version: string;
 }
 
 /** KB 搜索命中（后端 FTS 返回 snippet，内含 <mark> 标记）。 */
@@ -132,29 +118,25 @@ export interface KbSearchHit {
 export interface KbSearchResult {
   items: KbSearchHit[];
   total: number;
-  kbStatus?: string;
+  /**
+   * 服务端 FTS 查询失败、退回 LIKE 子串搜索时为 true。
+   * 结果仍然可用，但只会命中标题/描述，正文与分词命中会缺失 —— UI 必须提示。
+   */
+  degraded?: boolean;
+  /** 固定错误码（当前只有 FTS_QUERY_FAILED），不透传底层 SQL 细节。 */
+  degraded_reason?: string;
 }
 
-/** 知识库文档详情：服务端可能返回 content_md（契约）或 body（服务层）。 */
+/** 知识库文档详情：字段与 `KbService.get()` 的返回一一对应。 */
 export interface KbDocView {
   path: string;
   title: string | null;
   type: string;
   tags: string[];
-  description?: string | null;
-  doc_date?: string | null;
-  content_md?: string;
-  body?: string;
-  frontmatter?: unknown;
-  hash?: string;
-}
-
-export interface KbStatsView {
-  docs: number;
-  types: Array<{ type: string; count: number }>;
-  last_indexed_at: number | string | null;
-  configured?: boolean;
-  root?: string | null;
+  description: string | null;
+  doc_date: string | null;
+  body: string;
+  hash: string;
 }
 
 /** 单条能力提示词：system 是当前生效值，default_system 用于“恢复默认”。 */
@@ -189,6 +171,14 @@ export interface SettingsView {
       configured: boolean;
       key_source: 'file' | 'env' | null;
       key_path: string;
+      /**
+       * 页面密钥的读取状态：ok / not_configured / unreadable。
+       * unreadable 表示「配过但解不开」，必须显式告警 —— 否则用户会以为密钥还在，
+       * 实际增强分析已经回退到环境变量或直接停用。
+       */
+      key_state: 'ok' | 'not_configured' | 'unreadable';
+      /** 仅在 key_state=unreadable 时出现：master_key_missing / master_key_invalid / decrypt_failed / secrets_file_invalid。 */
+      key_error?: string;
     };
     kb_suggestion_ready: boolean;
   };
@@ -201,6 +191,8 @@ export interface SettingsView {
     lease_seconds: number;
     page_size_max: number;
     rate_limit_per_minute: number;
+    /** 令牌桶容量 = 允许的突发请求数（REQ-FN-028：60）。 */
+    rate_limit_burst: number;
   };
   server: {
     host: string;
@@ -210,6 +202,11 @@ export interface SettingsView {
     schema_version: number;
   };
   token: { label: string; configured: boolean };
+  /**
+   * 页面保存值覆盖了同名环境变量的键；只用于提示“改环境变量不会生效”，
+   * 不改变任何生效值。服务端未返回时按空数组处理（兼容旧后端）。
+   */
+  env_overrides: Array<{ key: string; env_var: string }>;
 }
 
 /**

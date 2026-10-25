@@ -158,6 +158,7 @@ MCP 调用统一是 JSON-RPC 2.0：
 - `INVALID_ARGUMENT`：非 `question` 卡缺 `task_id`。先 `task.create`（草稿即可）拿到任务，再发卡。
 - `INVALID_ARGUMENT` + `details.pattern`：正文命中令牌/密码/私钥模式。改内容，不要试图拆分绕过。
 - `INVALID_ARGUMENT`：`body_md` 超过 64KB 或 `message_md` 超过 16KB。
+- `INVALID_ARGUMENT`：`status` / `handoff` 卡带了 `body_md`。正文分别改用 `detail_md`、`message_md`；`body_md` 只用于 `info`。
 - `question` 不要用 `card.post` 发——那样没有答案回传通道，用 `card.ask`。如果确实用 `card.post` 发 `question`，四段与选项校验同样会执行，但调用方拿不到有界等待的结果。
 
 ---
@@ -292,11 +293,13 @@ MCP 调用统一是 JSON-RPC 2.0：
 | `unassigned` | boolean | 否 | `true` 时只返回升级前没有任务的存量卡 |
 | `page` / `page_size` | int | 否 |
 | `include_archived` | boolean | 否 |
+| `include_body` | boolean | 否，默认 `false`；`true` 时返回完整正文 |
 
 返回分页列表，`meta` 里有 `total`、`has_more`；每张卡带 `read_at`（`null` 表示未读）。
 
+- **默认省略正文**：`body_md` / `background_md` / `goal_md` / `research_md` / `decision_md` / `message_md` 默认返回 `null`，只给 `preview_md`（从 body → background → goal 取第一个非空值，约 240 字符）。需要全文时显式传 `include_body=true`；`card.get` 始终返回完整卡片。
 - `project` 按主对话过滤，一次返回该项目下全部 `topic` 通道的卡；与 `channel_key` 同时给时取交集。
-- `task_id` 用于查某任务的关联卡（含证据卡），也是任务的完整信息流。
+- `task_id` 用于查某任务的关联卡（含证据卡）。它默认也只会返回 `preview_md`；按任务读完整信息流时要同时传 `include_body=true`（Web 任务信息流已这样做）。
 - `unassigned=true` 只用于盘点升级前的存量无归属卡；新卡已不可能进入该集合。
 - **用法**：发卡前用它查重，避免同一件事刷屏。
 
@@ -346,14 +349,16 @@ task.create(kind="suggestion", title="建议：……", description_md="背景/�
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `task_id` | string | 是 | |
-| `event` | enum | 否 | `submit`/`start`/`block`/`unblock`/`complete`/`fail`/`cancel`/`release`/`defer`/`undefer`/`flag_risk`/`unflag_risk` |
-| `claim_token` | string | 状态事件必填 | 除 `submit`/`cancel`/`defer`/`undefer`/`flag_risk`/`unflag_risk` 外 |
+| `event` | enum | 否 | `submit`/`start`/`block`/`unblock`/`complete`/`fail`/`cancel`/`release`/`retry`/`defer`/`undefer`/`flag_risk`/`unflag_risk` |
+| `claim_token` | string | 状态事件必填 | 除 `submit`/`cancel`/`retry`/`defer`/`undefer`/`flag_risk`/`unflag_risk` 外 |
 | `patch` | object | 否 | `title`/`description_md`/`priority`/`assignee`/`tags`/`category`/`due_at` |
-| `reason` | string | `fail`/`block`/`cancel`/`defer`/`flag_risk` 必填 | 终态必须能回答“为什么”；`flag_risk` 写清“留了什么坑” |
+| `reason` | string | `fail`/`block`/`cancel`/`retry`/`defer`/`flag_risk` 必填 | 终态必须能回答“为什么”；`flag_risk` 写清“留了什么坑”；`retry` 写清“为什么重做” |
 | `deferred_until` | ISO string | 否 | 仅 `defer`：计划恢复时间 |
 | `evidence_card_ids` | string[] | 否 | `complete` 可选；不传则服务端自动查关联卡 |
 
 `event` 与 `patch` 可以同时给，服务端在同一事务里先校验状态、再应用字段。
+
+`retry` 是 `failed` 的专用出口：只允许 `failed → pending`，`reason` 必填，不需要 `claim_token`。它把任务重新放回待认领队列（`fail_reason`/`failed_at`/上一轮租约被清空，`started_at`/`claimed_at` 保留），之后仍需重新 `task.claim` 才能执行；`done`/`cancelled` 不能 `retry`。
 
 **状态时间线**：返回的任务对象带 `claimed_at`、`started_at`、`blocked_at`、`completed_at`、`failed_at`、`cancelled_at`、`blocked_reason`、`fail_reason`、`cancel_reason`、`defer_reason`、`deferred_at`、`deferred_until`，时间字段为 ISO 字符串或 `null`。`defer_reason` 非空即表示“已暂缓”。
 
@@ -371,6 +376,7 @@ task.create(kind="suggestion", title="建议：……", description_md="背景/�
 | `unblock` | 不清空 `blocked_at`，保留最近一次阻塞历史 |
 | `complete` | `completed_at` |
 | `fail` | `failed_at` + `fail_reason`（取 `reason`） |
+| `retry` | 清空 `failed_at`/`fail_reason`/`claimed_by`/`claim_token`/`claim_expires_at`；`status` 回 `pending`；保留 `started_at`/`claimed_at`；只允许 `failed` |
 | `cancel` | `cancelled_at` + `cancel_reason`（取 `reason`，必填）；清空暂缓三列 |
 | `defer` | `defer_reason` + `deferred_at`（+ 可选 `deferred_until`）；`status` 不变；仅 `draft`/`pending` |
 | `undefer` | 清空暂缓三列；任务未暂缓时报 `CONFLICT TASK_NOT_DEFERRED` |
@@ -417,6 +423,7 @@ task.create(kind="suggestion", title="建议：……", description_md="背景/�
 **常见错误**：
 
 - `CONFLICT`：非法转移（如 `done -> start`）。先 `task.list` 读最新状态。
+- `CONFLICT`：对非 `failed` 任务调 `retry`。`retry` 只有 `failed -> pending` 一条边；`done`/`cancelled` 不可逆。
 - `CONFLICT`（`TASK_NOT_DEFERRED`）：对没有暂缓标记的任务调 `undefer`。
 - `CONFLICT`（`TASK_RISK_NOT_FLAGGED`）：对没有隐患的任务调 `unflag_risk`。
 - `CONFLICT`（`TASK_RISK_ALREADY_RESOLVED`）：隐患已经解除，重复解除；要重新记一条风险请用 `flag_risk`。

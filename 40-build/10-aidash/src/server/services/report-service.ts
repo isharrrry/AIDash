@@ -12,8 +12,15 @@ import type {
   ReportView,
 } from '../../shared/types.js';
 import type { Db } from '../db/connection.js';
+import {
+  MaterialRepo,
+  clipReportText,
+  formatReportTime,
+  type ReportMaterial,
+} from '../repos/material-repo.js';
 import type { ReportRepo, ReportRow, ReportRunRow } from '../repos/report-repo.js';
 import type { AuditService } from './audit-service.js';
+import { BatchRunner, runBatch } from './batch-runner.js';
 import type { LlmService } from './llm-service.js';
 import type { SettingsService } from './settings-service.js';
 import {
@@ -21,16 +28,12 @@ import {
   periodRange,
   periodRangeFromKey,
   periodTitle,
+  type PeriodRange,
 } from './report-period.js';
 
 const DAY_MS = 86_400_000;
 /** 专题新建时默认回看 30 天；更新某期周期汇报时改用那一期的自然窗口。 */
 const TOPIC_WINDOW_DAYS = 30;
-const MAX_SOURCE_TASKS = 80;
-const MAX_SOURCE_CARDS = 60;
-const MAX_BACKLOG_TASKS = 30;
-const MAX_SOURCE_CHARS = 400;
-const MAX_PROMPT_CHARS = 40_000;
 const MAX_TOPIC_INSTRUCTION_CHARS = 4_000;
 const MAX_TOPIC_TITLE_CHARS = 200;
 const MAX_TOPIC_TARGETS = 10;
@@ -41,6 +44,11 @@ export const REPORT_PAGE_SIZE_MAX = 50;
 export interface ReportServiceDeps {
   db: Db;
   reports: ReportRepo;
+  /**
+   * 素材仓储由服务容器装配；保留可选是为了不破坏已有直接构造点，
+   * 生产路径一律显式注入，避免出现两份不同的素材口径。
+   */
+  materials?: MaterialRepo;
   llm: LlmService;
   settings: SettingsService;
   audit: AuditService;
@@ -65,9 +73,19 @@ export interface TopicReportInput {
   targetReportIds?: string[];
 }
 
-interface Material {
-  text: string;
-  count: number;
+interface PeriodBatchContext {
+  period: PeriodRange['period'];
+  range: PeriodRange;
+  reportId: string;
+}
+
+interface TopicBatchContext {
+  current: ReportRow;
+}
+
+interface GeneratedReport {
+  content: string;
+  sourceCount: number;
 }
 
 /**
@@ -81,9 +99,13 @@ interface Material {
  *   用于“现在就断”，两者缺一都会留下“取消后还在跑”的窗口。
  */
 export class ReportService {
-  private readonly controllers = new Map<string, AbortController>();
+  /** 后台批次的启停与 abort 统一交给共享 runner；服务层只负责业务状态落库。 */
+  private readonly batches = new BatchRunner();
+  private readonly materials: MaterialRepo;
 
-  constructor(private readonly deps: ReportServiceDeps) {}
+  constructor(private readonly deps: ReportServiceDeps) {
+    this.materials = deps.materials ?? new MaterialRepo(deps.db);
+  }
 
   /** 启动时收尸：上一个进程留下的 running 不会再有人推进，必须标失败。 */
   recover(): number {
@@ -306,10 +328,7 @@ export class ReportService {
       total: run.total,
     });
 
-    const controller = this.controllers.get(runId);
-    if (controller) {
-      controller.abort();
-    } else {
+    if (!this.batches.abort(runId)) {
       // 没有控制器说明这个批次不在当前进程里推进（异常残留）；
       // 不直接收尾的话，页面会永远停在“取消中”。
       const now = this.deps.clock.now();
@@ -372,19 +391,24 @@ export class ReportService {
     }
   }
 
-  /** 注册 AbortController 并启动后台任务；任务结束后必须移除，否则取消会打到旧批次。 */
+  /** 注册批次并启动后台任务；异常兜底收尾，保证闸门不会永远停在 running。 */
   private kick(run: ReportRunRow, task: (signal: AbortSignal) => Promise<void>): void {
-    const controller = new AbortController();
-    this.controllers.set(run.id, controller);
-    void task(controller.signal)
-      .catch(() => {
-        // execute* 内部已把失败写进库；这里只兜底“连收尾都失败”的情况，
-        // 不能把未处理的 rejection 留给进程。
-        this.finishSafely(run.id, 'failed', 'report_internal_error');
-      })
-      .finally(() => {
-        this.controllers.delete(run.id);
-      });
+    this.batches.spawn(run.id, task, () => {
+      // execute* 内部已把失败写进库；这里只兜底“连收尾都失败”的情况，
+      // 不能把未处理的 rejection 留给进程。
+      this.finishSafely(run.id, 'failed', 'report_internal_error');
+    });
+  }
+
+  /**
+   * 关机：中断所有在途批次并等它们收尾。
+   *
+   * 只 stop 定时器不够——汇报生成是独立的 async 任务，abort 后 catch 分支
+   * 还要写 report.status 与 report_run.finished_at；db.close() 抢先执行会让这些更新失败。
+   */
+  async shutdown(): Promise<void> {
+    this.batches.abortAll();
+    await this.batches.waitForIdle();
   }
 
   private async executePeriod(run: ReportRunRow, signal: AbortSignal): Promise<void> {
@@ -392,73 +416,85 @@ export class ReportService {
     // 以批次开始时刻定六个周期的边界：一次更新若跨过午夜，
     // 不能出现日报算今天、周报算下周的错位。
     const base = run.started_at;
-    let completed = 0;
 
-    for (const period of REPORT_PERIODS) {
-      if (deps.reports.isCancelRequested(run.id)) {
-        this.finishCancelled(run.id);
-        return;
-      }
-      const range = periodRange(period, base);
-      const existing = deps.reports.findPeriod(period, range.key);
-      const reportId = existing?.id ?? newId('rp', deps.clock.now());
-      deps.reports.updateRunProgress(run.id, period, completed);
-      deps.reports.beginPeriod({
-        id: reportId,
-        period,
-        periodKey: range.key,
-        title: periodTitle(period, range.key),
-        runId: run.id,
-        now: deps.clock.now(),
-      });
-
-      try {
-        const material = this.collectMaterial(range.start, range.end);
-        const content = await deps.llm.chat({
-          system: deps.llm.prompt('report'),
-          user: buildPeriodPrompt(range.label, range.key, range.start, range.end, material.text),
-          maxTokens: REPORT_MAX_TOKENS,
-          signal,
-        });
-        if (deps.reports.isCancelRequested(run.id)) {
+    await runBatch<PeriodRange['period'], PeriodBatchContext, GeneratedReport>(
+      REPORT_PERIODS,
+      signal,
+      {
+        isCancelled: () => deps.reports.isCancelRequested(run.id),
+        begin: (period, completed) => {
+          const range = periodRange(period, base);
+          const existing = deps.reports.findPeriod(period, range.key);
+          const reportId = existing?.id ?? newId('rp', deps.clock.now());
+          deps.reports.updateRunProgress(run.id, period, completed);
+          deps.reports.beginPeriod({
+            id: reportId,
+            period,
+            periodKey: range.key,
+            title: periodTitle(period, range.key),
+            runId: run.id,
+            now: deps.clock.now(),
+          });
+          return { kind: 'continue', context: { period, range, reportId } };
+        },
+        execute: async (_period, context, taskSignal) => {
+          const material = this.collectMaterial(context.range.start, context.range.end);
+          const content = await deps.llm.chat({
+            system: deps.llm.prompt('report'),
+            user: buildPeriodPrompt(
+              context.range.label,
+              context.range.key,
+              context.range.start,
+              context.range.end,
+              material.text,
+            ),
+            maxTokens: REPORT_MAX_TOKENS,
+            // 汇报一次要读完整窗口素材，失败后用户得整批重来；
+            // 上游偶发空响应时多试一次，代价远低于让整批停在 failed。
+            retryOnEmpty: 1,
+            signal: taskSignal,
+          });
+          return { content, sourceCount: material.count };
+        },
+        complete: (_period, context, result, completed) => {
+          const settings = deps.settings.current();
+          deps.reports.markReady(context.reportId, {
+            content: result.content.trim(),
+            sourceCount: result.sourceCount,
+            model: settings.llmModel ?? 'unknown',
+            mode: settings.llmMode,
+            now: deps.clock.now(),
+          });
+          deps.reports.updateRunProgress(run.id, context.period, completed);
+        },
+        cancelled: (context) => {
           // 模型在取消按钮按下前就返回了：不写入半成品，按取消收尾。
-          deps.reports.markCancelled(reportId, deps.clock.now());
+          if (context) deps.reports.markCancelled(context.reportId, deps.clock.now());
           this.finishCancelled(run.id);
-          return;
-        }
-        const settings = deps.settings.current();
-        deps.reports.markReady(reportId, {
-          content: content.trim(),
-          sourceCount: material.count,
-          model: settings.llmModel ?? 'unknown',
-          mode: settings.llmMode,
-          now: deps.clock.now(),
-        });
-        completed += 1;
-        deps.reports.updateRunProgress(run.id, period, completed);
-      } catch (error) {
-        if (deps.reports.isCancelRequested(run.id)) {
-          deps.reports.markCancelled(reportId, deps.clock.now());
-          this.finishCancelled(run.id);
-          return;
-        }
-        const reason = errorText(error);
-        deps.reports.markFailed(reportId, reason, deps.clock.now());
-        deps.reports.finishRun(run.id, 'failed', reason, deps.clock.now());
-        deps.audit.record(systemCtx(run.id), 'report.update', 'error', 'report_run', run.id, {
-          period,
-          error: reason,
-        });
-        return;
-      }
-    }
-
-    deps.reports.finishRun(run.id, 'done', null, deps.clock.now());
-    deps.audit.record(systemCtx(run.id), 'report.update', 'ok', 'report_run', run.id, {
-      completed,
-      total: REPORT_PERIODS.length,
-    });
-    this.notifyRunDone(run.id);
+        },
+        halted: (_period, reason) => {
+          // 周期批次不会主动中止；保留兜底，避免未来新增周期时静默卡住。
+          deps.reports.finishRun(run.id, 'failed', reason, deps.clock.now());
+        },
+        failed: (_period, context, _error, reason) => {
+          deps.reports.markFailed(context.reportId, reason, deps.clock.now());
+          deps.reports.finishRun(run.id, 'failed', reason, deps.clock.now());
+          deps.audit.record(systemCtx(run.id), 'report.update', 'error', 'report_run', run.id, {
+            period: context.period,
+            error: reason,
+          });
+        },
+        done: (completed) => {
+          deps.reports.finishRun(run.id, 'done', null, deps.clock.now());
+          deps.audit.record(systemCtx(run.id), 'report.update', 'ok', 'report_run', run.id, {
+            completed,
+            total: REPORT_PERIODS.length,
+          });
+          this.notifyRunDone(run.id);
+        },
+        reasonForError: errorText,
+      },
+    );
   }
 
   private async executeTopic(
@@ -468,29 +504,42 @@ export class ReportService {
     signal: AbortSignal,
   ): Promise<void> {
     const deps = this.deps;
-    let completed = 0;
 
-    for (const target of targets) {
-      if (deps.reports.isCancelRequested(run.id)) {
-        this.finishCancelled(run.id);
-        return;
-      }
-      const current = deps.reports.get(target.row.id) ?? target.row;
-      deps.reports.updateRunProgress(run.id, current.period, completed);
-      // 逐条进入“生成中”而不是启动时批量预标记：这一条失败/被取消时，
-      // 后面的目标仍保持原状态，可以单独再提交。本次要求也在这里落库，
-      // 与状态写入同一条 UPDATE，避免出现“状态没变但要求已改”的中间态。
-      deps.reports.beginExisting(current.id, {
-        runId: run.id,
-        now: deps.clock.now(),
-        instruction: target.instruction,
-      });
+    await runBatch<
+      { row: ReportRow; instruction: string },
+      TopicBatchContext,
+      GeneratedReport
+    >(targets, signal, {
+      isCancelled: () => deps.reports.isCancelRequested(run.id),
+      begin: (target, completed) => {
+        // 目标可能在批次启动后被删除：启动时校验过 404，但后台执行是异步的。
+        // 这里若退回启动时的快照，beginExisting/markReady 会更新 0 行，
+        // 批次却按 completed 递增收尾为 done——用户看到的是一次“静默成功”。
+        const current = deps.reports.get(target.row.id);
+        if (!current) {
+          return { kind: 'halt', reason: `report_not_found:${target.row.id}` };
+        }
 
-      try {
+        deps.reports.updateRunProgress(run.id, current.period, completed);
+        // 逐条进入“生成中”而不是启动时批量预标记：这一条失败/被取消时，
+        // 后面的目标仍保持原状态，可以单独再提交。本次要求也在这里落库，
+        // 与状态写入同一条 UPDATE，避免出现“状态没变但要求已改”的中间态。
+        deps.reports.beginExisting(current.id, {
+          runId: run.id,
+          now: deps.clock.now(),
+          instruction: target.instruction,
+        });
+        return { kind: 'continue', context: { current } };
+      },
+      execute: async (_target, context, taskSignal) => {
         // 更新周期汇报时用那一期的窗口；新建专题/更新专题用最近 30 天。
         const range =
-          current.kind === 'period' && current.period !== 'topic'
-            ? periodRangeFromKey(current.period, current.period_key, run.started_at)
+          context.current.kind === 'period' && context.current.period !== 'topic'
+            ? periodRangeFromKey(
+                context.current.period,
+                context.current.period_key,
+                run.started_at,
+              )
             : {
                 start: run.started_at - TOPIC_WINDOW_DAYS * DAY_MS,
                 end: run.started_at,
@@ -498,49 +547,62 @@ export class ReportService {
         const material = this.collectMaterial(range.start, range.end);
         const content = await deps.llm.chat({
           system: deps.llm.prompt('report'),
-          user: buildTopicPrompt(instruction, current, range.start, range.end, material.text),
+          user: buildTopicPrompt(
+            instruction,
+            context.current,
+            range.start,
+            range.end,
+            material.text,
+          ),
           maxTokens: REPORT_MAX_TOKENS,
-          signal,
+          retryOnEmpty: 1,
+          signal: taskSignal,
         });
-        if (deps.reports.isCancelRequested(run.id)) {
-          deps.reports.markCancelled(current.id, deps.clock.now());
-          this.finishCancelled(run.id);
-          return;
-        }
+        return { content, sourceCount: material.count };
+      },
+      complete: (_target, context, result, completed) => {
         const settings = deps.settings.current();
-        deps.reports.markReady(current.id, {
-          content: content.trim(),
-          sourceCount: material.count,
+        deps.reports.markReady(context.current.id, {
+          content: result.content.trim(),
+          sourceCount: result.sourceCount,
           model: settings.llmModel ?? 'unknown',
           mode: settings.llmMode,
           now: deps.clock.now(),
         });
-        completed += 1;
-        deps.reports.updateRunProgress(run.id, current.period, completed);
-      } catch (error) {
-        if (deps.reports.isCancelRequested(run.id)) {
-          deps.reports.markCancelled(current.id, deps.clock.now());
-          this.finishCancelled(run.id);
-          return;
-        }
-        const reason = errorText(error);
-        deps.reports.markFailed(current.id, reason, deps.clock.now());
+        deps.reports.updateRunProgress(run.id, context.current.period, completed);
+      },
+      cancelled: (context) => {
+        if (context) deps.reports.markCancelled(context.current.id, deps.clock.now());
+        this.finishCancelled(run.id);
+      },
+      halted: (target, reason, completed) => {
         deps.reports.finishRun(run.id, 'failed', reason, deps.clock.now());
         deps.audit.record(systemCtx(run.id), 'report.topic', 'error', 'report_run', run.id, {
-          report_id: current.id,
+          report_id: target.row.id,
+          error: 'report_not_found',
+          completed,
+          total: targets.length,
+        });
+      },
+      failed: (_target, context, _error, reason) => {
+        deps.reports.markFailed(context.current.id, reason, deps.clock.now());
+        deps.reports.finishRun(run.id, 'failed', reason, deps.clock.now());
+        deps.audit.record(systemCtx(run.id), 'report.topic', 'error', 'report_run', run.id, {
+          report_id: context.current.id,
           error: reason,
         });
-        return;
-      }
-    }
-
-    deps.reports.finishRun(run.id, 'done', null, deps.clock.now());
-    deps.audit.record(systemCtx(run.id), 'report.topic', 'ok', 'report_run', run.id, {
-      completed,
-      total: targets.length,
-      instruction_chars: instruction.length,
+      },
+      done: (completed) => {
+        deps.reports.finishRun(run.id, 'done', null, deps.clock.now());
+        deps.audit.record(systemCtx(run.id), 'report.topic', 'ok', 'report_run', run.id, {
+          completed,
+          total: targets.length,
+          instruction_chars: instruction.length,
+        });
+        this.notifyRunDone(run.id);
+      },
+      reasonForError: errorText,
     });
-    this.notifyRunDone(run.id);
   }
 
   /**
@@ -592,291 +654,16 @@ export class ReportService {
   }
 
   /**
-   * 汇总一个窗口内的系统事实。
+   * 汇总窗口素材。
    *
-   * 只取“人写得出来”的摘要：标题、状态、原因、简短描述。不把完整描述
-   * （可能内嵌 base64 截图）塞进提示词，否则一个任务就能吃光上下文。
+   * SQL 与格式化已移到 MaterialRepo（直接查询 task/card/channel/harness 的持久化记录），
+   * 服务层只负责把“生成时刻”和在线阈值传进去，保证提示词口径仍由 ReportService 决定。
    */
-  private collectMaterial(start: number, end: number): Material {
-    const db = this.deps.db;
-    const lines: string[] = [];
-
-    const counts = db
-      .prepare(
-        `SELECT
-           SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS created,
-           SUM(CASE WHEN completed_at >= ? AND completed_at < ? THEN 1 ELSE 0 END) AS completed,
-           SUM(CASE WHEN failed_at >= ? AND failed_at < ? THEN 1 ELSE 0 END) AS failed,
-           SUM(CASE WHEN cancelled_at >= ? AND cancelled_at < ? THEN 1 ELSE 0 END) AS cancelled,
-           SUM(CASE WHEN blocked_at >= ? AND blocked_at < ? THEN 1 ELSE 0 END) AS blocked
-         FROM task`,
-      )
-      .get(start, end, start, end, start, end, start, end, start, end) as {
-      created: number | null;
-      completed: number | null;
-      failed: number | null;
-      cancelled: number | null;
-      blocked: number | null;
-    };
-    lines.push(
-      '## 本周期任务统计',
-      `新登记 ${counts.created ?? 0}；完成 ${counts.completed ?? 0}；失败 ${counts.failed ?? 0}；` +
-        `取消 ${counts.cancelled ?? 0}；进入阻塞 ${counts.blocked ?? 0}`,
-      '',
-    );
-
-    const eventCounts = db
-      .prepare(
-        `SELECT event, COUNT(*) AS n FROM task_event
-          WHERE created_at >= ? AND created_at < ?
-          GROUP BY event ORDER BY n DESC`,
-      )
-      .all(start, end) as Array<{ event: string; n: number }>;
-    if (eventCounts.length > 0) {
-      lines.push(
-        '## 状态事件',
-        eventCounts.map((row) => `${row.event}: ${row.n}`).join('；'),
-        '',
-      );
-    }
-
-    // 长周期（季/半/年）的更新次数远多于 80 条；只取“最近 80 条”会让前半段
-    // 完全缺席。这里按行号等距抽样：同样的提示词预算下覆盖整个窗口，
-    // 而不是把半年报写成“最近两个月小结”。
-    const tasks = db
-      .prepare(
-        `WITH scoped AS (
-           SELECT t.title, t.status, t.kind, t.priority, t.assignee, t.claimed_by,
-                  t.blocked_reason, t.fail_reason, t.cancel_reason, t.defer_reason,
-                  t.risk_note, t.risk_resolved_at, t.risk_resolution,
-                  t.completed_at, t.updated_at, ch.channel_key, ch.project,
-                  ROW_NUMBER() OVER (ORDER BY t.updated_at DESC) AS rn,
-                  COUNT(*) OVER () AS total
-             FROM task t JOIN channel ch ON ch.id = t.channel_id
-            WHERE t.updated_at >= ? AND t.updated_at < ?
-         )
-         SELECT title, status, kind, priority, assignee, claimed_by,
-                blocked_reason, fail_reason, cancel_reason, defer_reason,
-                risk_note, risk_resolved_at, risk_resolution,
-                completed_at, updated_at, channel_key, project, total
-           FROM scoped
-          WHERE rn % MAX(1, (total + ? - 1) / ?) = 1
-          ORDER BY updated_at DESC
-          LIMIT ?`,
-      )
-      .all(start, end, MAX_SOURCE_TASKS, MAX_SOURCE_TASKS, MAX_SOURCE_TASKS) as Array<{
-      title: string;
-      status: string;
-      kind: string;
-      priority: string;
-      assignee: string | null;
-      claimed_by: string | null;
-      blocked_reason: string | null;
-      fail_reason: string | null;
-      cancel_reason: string | null;
-      defer_reason: string | null;
-      risk_note: string | null;
-      risk_resolved_at: number | null;
-      risk_resolution: string | null;
-      completed_at: number | null;
-      updated_at: number;
-      channel_key: string;
-      project: string | null;
-      total: number;
-    }>;
-    if (tasks.length > 0) {
-      const taskTotal = tasks[0]?.total ?? tasks.length;
-      lines.push(
-        taskTotal > tasks.length
-          ? `## 本周期有更新的任务（共 ${taskTotal} 条，按时间均匀抽样 ${tasks.length} 条）`
-          : '## 本周期有更新的任务',
-      );
-      for (const task of tasks) {
-        const reason =
-          clip(task.blocked_reason, 240) ||
-          clip(task.fail_reason, 240) ||
-          clip(task.cancel_reason, 240) ||
-          clip(task.defer_reason, 240);
-        const owner = task.claimed_by || task.assignee || '未指派';
-        // 隐患单列出来：老板复盘时要判断“带病完成”的取舍，混在普通原因里会被忽略。
-        const risk = task.risk_note
-          ? `；隐患：${clip(task.risk_note, 240)}${
-              task.risk_resolved_at
-                ? `（已解除${task.risk_resolution ? `：${clip(task.risk_resolution, 120)}` : ''}）`
-                : '（未解除）'
-            }`
-          : '';
-        lines.push(
-          `- [${task.status}/${task.priority}${task.kind === 'suggestion' ? '/建议' : ''}] ` +
-            `${clip(task.title, 200)}（${clip(task.project ?? task.channel_key, 80)}，负责人：${clip(owner, 60)}` +
-            `${task.completed_at ? `，完成于 ${formatTs(task.completed_at)}` : ''}）` +
-            `${reason ? `；原因：${reason}` : ''}${risk}`,
-        );
-      }
-      lines.push('');
-    }
-
-    const cards = db
-      .prepare(
-        `WITH scoped AS (
-           SELECT c.type, c.status, c.title, c.summary, c.body_md, c.detail_md, c.result,
-                  c.severity, c.created_at, ch.channel_key, ch.project,
-                  ROW_NUMBER() OVER (ORDER BY c.created_at DESC) AS rn,
-                  COUNT(*) OVER () AS total
-             FROM card c JOIN channel ch ON ch.id = c.channel_id
-            WHERE c.created_at >= ? AND c.created_at < ?
-         )
-         SELECT type, status, title, summary, body_md, detail_md, result,
-                severity, created_at, channel_key, project, total
-           FROM scoped
-          WHERE rn % MAX(1, (total + ? - 1) / ?) = 1
-          ORDER BY created_at DESC
-          LIMIT ?`,
-      )
-      .all(start, end, MAX_SOURCE_CARDS, MAX_SOURCE_CARDS, MAX_SOURCE_CARDS) as Array<{
-      type: string;
-      status: string;
-      title: string | null;
-      summary: string | null;
-      body_md: string | null;
-      detail_md: string | null;
-      result: string | null;
-      severity: string | null;
-      created_at: number;
-      channel_key: string;
-      project: string | null;
-      total: number;
-    }>;
-    if (cards.length > 0) {
-      const cardTotal = cards[0]?.total ?? cards.length;
-      lines.push(
-        cardTotal > cards.length
-          ? `## 本周期卡片（共 ${cardTotal} 条，按时间均匀抽样 ${cards.length} 条）`
-          : '## 本周期卡片',
-      );
-      for (const card of cards) {
-        const text =
-          clip(card.summary, MAX_SOURCE_CHARS) ||
-          clip(card.detail_md, MAX_SOURCE_CHARS) ||
-          clip(card.body_md, MAX_SOURCE_CHARS);
-        if (!text) continue;
-        const result = card.result ? `/${card.result}` : '';
-        const severity = card.severity ? `/${card.severity}` : '';
-        lines.push(
-          `- [${card.type}/${card.status}${result}${severity}] ${clip(card.title, 160) || '（无标题）'}：` +
-            `${text}（${clip(card.project ?? card.channel_key, 80)}，${formatTs(card.created_at)}）`,
-        );
-      }
-      lines.push('');
-    }
-
-    // 未结束任务与运行环境是“生成时”事实，不属于某个历史周期。
-    // 重写 6 月月报时把它们写进去，会把 10 月的阻塞误报成 6 月的风险；
-    // 因此只在“刚结束不到一天”的窗口（当前周期、最近 30 天专题）里附加。
-    const now = this.deps.clock.now();
-    const isRecent = end > now - DAY_MS;
-    if (isRecent) {
-      const backlog = db
-        .prepare(
-          `SELECT t.title, t.status, t.kind, t.priority, t.assignee, t.claimed_by,
-                  t.blocked_reason, t.defer_reason, t.risk_note, t.risk_resolved_at,
-                  t.updated_at, ch.channel_key, ch.project
-             FROM task t JOIN channel ch ON ch.id = t.channel_id
-            WHERE t.status IN ('draft','pending','claimed','in_progress','blocked')
-            ORDER BY CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
-                     t.updated_at DESC
-            LIMIT ?`,
-        )
-        .all(MAX_BACKLOG_TASKS) as Array<{
-        title: string;
-        status: string;
-        kind: string;
-        priority: string;
-        assignee: string | null;
-        claimed_by: string | null;
-        blocked_reason: string | null;
-        defer_reason: string | null;
-        risk_note: string | null;
-        risk_resolved_at: number | null;
-        updated_at: number;
-        channel_key: string;
-        project: string | null;
-      }>;
-      const openCount = (
-        db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM task
-              WHERE status IN ('draft','pending','claimed','in_progress','blocked')`,
-          )
-          .get() as { n: number }
-      ).n;
-      lines.push(`## 生成时未结束任务（共 ${openCount} 条，列出前 ${backlog.length} 条）`);
-      if (backlog.length === 0) {
-        lines.push('- 无');
-      } else {
-        for (const task of backlog) {
-          const owner = task.claimed_by || task.assignee || '未指派';
-          const flag = task.defer_reason ? '（已暂缓）' : task.blocked_reason ? '（阻塞）' : '';
-          const reason = clip(task.blocked_reason, 200) || clip(task.defer_reason, 200);
-          // 未解除的隐患要在“还开着的活”里显式提示：它比普通任务更容易被遗忘。
-          const risk =
-            task.risk_note && task.risk_resolved_at === null
-              ? `（带隐患：${clip(task.risk_note, 160)}）`
-              : '';
-          lines.push(
-            `- [${task.status}/${task.priority}${task.kind === 'suggestion' ? '/建议' : ''}] ` +
-              `${clip(task.title, 200)}（${clip(task.project ?? task.channel_key, 80)}，负责人：${clip(owner, 60)}）` +
-              `${flag}${risk}${reason ? `：${reason}` : ''}`,
-          );
-        }
-      }
-      lines.push('');
-
-      const harnesses = db
-        .prepare(`SELECT status, COUNT(*) AS n FROM harness GROUP BY status`)
-        .all() as Array<{ status: string; n: number }>;
-      const activeChannels = (
-        db.prepare(`SELECT COUNT(*) AS n FROM channel WHERE status = 'active'`).get() as {
-          n: number;
-        }
-      ).n;
-      const onlineChannels = (
-        db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM channel
-              WHERE status = 'active' AND last_mcp_at IS NOT NULL AND last_mcp_at >= ?`,
-          )
-          .get(now - this.deps.offlineThresholdMs) as { n: number }
-      ).n;
-      lines.push(
-        '## 生成时运行环境',
-        `活跃通道 ${activeChannels}，其中最近有 MCP 活动 ${onlineChannels}；` +
-          `harness：${
-            harnesses.length === 0
-              ? '无记录'
-              : harnesses.map((row) => `${row.status} ${row.n}`).join('，')
-          }`,
-      );
-    } else {
-      lines.push(
-        '## 说明',
-        '本次重写的是历史周期；未结束任务与运行环境属于生成时状态，未纳入本期素材，避免把当前事实写成历史。',
-        '',
-      );
-    }
-
-    const text =
-      lines.join('\n').length > MAX_PROMPT_CHARS
-        ? `${lines.join('\n').slice(0, MAX_PROMPT_CHARS)}\n…（素材过长，已截断）`
-        : lines.join('\n');
-    const count =
-      (counts.created ?? 0) +
-      (counts.completed ?? 0) +
-      (counts.failed ?? 0) +
-      (counts.cancelled ?? 0) +
-      tasks.length +
-      cards.length;
-    return { text, count };
+  private collectMaterial(start: number, end: number): ReportMaterial {
+    return this.materials.collect(start, end, {
+      now: this.deps.clock.now(),
+      offlineThresholdMs: this.deps.offlineThresholdMs,
+    });
   }
 }
 
@@ -889,7 +676,7 @@ function buildPeriodPrompt(
 ): string {
   return [
     `汇报类型：${label}`,
-    `周期：${key}（${formatTs(start)} ~ ${formatTs(end)}）`,
+    `周期：${key}（${formatReportTime(start)} ~ ${formatReportTime(end)}）`,
     '',
     '素材（全部来自 AIDash 系统记录；没记录的内容写“本期无记录”，不要编造）：',
     material || '（本周期没有任何记录）',
@@ -905,7 +692,7 @@ function buildTopicPrompt(
 ): string {
   const parts = [
     '汇报类型：专题报',
-    `时间范围：${formatTs(start)} ~ ${formatTs(end)}`,
+    `时间范围：${formatReportTime(start)} ~ ${formatReportTime(end)}`,
     '',
     '用户要求（必须按这段话组织内容）：',
     instruction,
@@ -913,13 +700,13 @@ function buildTopicPrompt(
   if (target.kind === 'topic') {
     parts.push('', '已有专题汇报（在此基础上改写）：', `标题：${target.title}`);
     if (target.content_md) {
-      parts.push('当前内容：', clip(target.content_md, 12_000));
+      parts.push('当前内容：', clipReportText(target.content_md, 12_000));
     }
   } else {
     parts.push(
       '',
       `要更新的已有汇报：${target.title}（${target.period_key}）`,
-      target.content_md ? `当前内容：\n${clip(target.content_md, 12_000)}` : '当前内容：（尚未生成）',
+      target.content_md ? `当前内容：\n${clipReportText(target.content_md, 12_000)}` : '当前内容：（尚未生成）',
     );
   }
   parts.push('', '素材（全部来自 AIDash 系统记录；没记录的内容不要编造）：', material || '（无记录）');
@@ -990,18 +777,4 @@ function dateKey(now: number): string {
 
 function pad(value: number): string {
   return String(value).padStart(2, '0');
-}
-
-/** 本地时区的短时间：老板看的是本地日历，ISO/UTC 会差 8 小时。 */
-function formatTs(ms: number): string {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours(),
-  )}:${pad(date.getMinutes())}`;
-}
-
-function clip(value: string | null | undefined, max: number): string {
-  if (!value) return '';
-  const text = value.replace(/\s+/g, ' ').trim();
-  return text.length > max ? `${text.slice(0, max)}…` : text;
 }

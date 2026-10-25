@@ -1,7 +1,7 @@
 # AGENTS.md — AIDash Harness 契约
 
 ```yaml
-contract_version: "4.11"
+contract_version: "4.18"
 schema_version: "1.0"
 aidash_version: "2.0.0"
 updated: "2026-10-25"
@@ -17,9 +17,9 @@ updated: "2026-10-25"
 | 项 | 值 |
 |---|---|
 | MCP 端点 | `POST http://127.0.0.1:8787/mcp`（Streamable HTTP） |
-| 认证 | `Authorization: Bearer $AIDASH_TOKEN` |
+| 认证 | `Authorization: Bearer $AIDASH_TOKEN`（可以是一句短口令） |
 | 协议 | JSON-RPC 2.0；支持 `initialize`、`tools/list`、`tools/call` |
-| 环境变量 | `AIDASH_URL`、`AIDASH_TOKEN` |
+| 环境变量 | `AIDASH_URL`、`AIDASH_TOKEN`（可短口令）、`AIDASH_HOST`；`AIDASH_PASSPHRASE` 为弃用别名 |
 
 ```bash
 curl -s "$AIDASH_URL/mcp" \
@@ -32,7 +32,8 @@ curl -s "$AIDASH_URL/mcp" \
 
 - 令牌**只从环境变量读**。不要写进仓库、命令行历史、卡片正文或日志。
 - 收到 `401` 立即停止，不要重试——重试只会把错误令牌刷进日志。
-- AIDash 默认只监听 `127.0.0.1`。跨机访问是部署方的显式选择（TLS + 反代），不是 agent 该操心的事。
+- 统一使用 `AIDASH_TOKEN` 一个凭据：它可以是一句短口令（建议 ≥8 字符），也可以是长随机串，只从环境变量读。`AIDASH_PASSPHRASE` 是弃用别名，仅为兼容旧配置保留，新配置不要再写。agent 不应索取、转述或写入凭据。
+- AIDash 默认只监听 `127.0.0.1`。跨机访问是部署方的显式选择：用 `AIDASH_HOST` 或启动脚本 `-BindHost` 改绑定地址，并自行配 TLS + 反代；明文 HTTP 暴露到局域网等于让 `AIDASH_TOKEN` 裸奔。
 
 **Agent 侧接入**：项目级 MCP 配置在 `40-build/00-platform/config/mcp.json`（`type: http`，`url: http://127.0.0.1:8787/mcp`），`Authorization` 用 `${AIDASH_TOKEN}` 占位。因为它不再位于仓库根，Claude Code 不会自动发现；启动时加 `claude --mcp-config 40-build/00-platform/config/mcp.json`，或把这段配置并入用户级 MCP 设置。一次性设置：把启动 8787 用的令牌写进系统环境变量 `AIDASH_TOKEN`；仓库里不保存明文。若 `AIDASH_TOKEN` 没设置，Claude Code 不会报错，而是把字面量 `${AIDASH_TOKEN}` 发出去，表现是 401——先检查启动 Claude 的进程环境里有没有这个变量。
 
@@ -51,7 +52,7 @@ curl -s "$AIDASH_URL/mcp" \
 | MCP-005 | `card.ask` | 发决策卡并有界等待（MCP 侧最多等 25 秒，超时返回 `pending`） | `channel_key`、`title`、`background_md`、`goal_md`、`research_md`、`decision_md`、`options`、`wait_seconds` |
 | MCP-006 | `card.get` | 读单张卡 | `card_id` |
 | MCP-007 | `card.wait` | 继续等答案 | `card_id`、`wait_seconds` |
-| MCP-008 | `card.list` | 列卡/查重 | `channel_key`、`project`、`type`、`status` |
+| MCP-008 | `card.list` | 列卡/查重 | `channel_key`、`project`、`type`、`status`、`include_body`（默认 false） |
 | MCP-009 | `task.create` | 建任务（draft） | `channel_key`、`title`、`parent_id`、`category` |
 | MCP-010 | `task.update` | 状态事件 / 暂缓 / 隐患 / 改字段 | `task_id`、`event`、`claim_token`、`patch`、`reason`、`deferred_until` |
 | MCP-011 | `task.list` | 列任务 | `channel_key`、`status`、`assignee`、`has_risk`、`risk_open`、`include_closed`（默认 false）、`include_description`（默认 false） |
@@ -73,6 +74,8 @@ curl -s "$AIDASH_URL/mcp" \
 **查询默认忽略完成/取消**：`task.list` 与 `task.tree` 默认不返回 `done` / `cancelled`（`failed` 保留，失败不能被藏起来），避免历史任务灌满上下文。要看历史时显式传 `status=done|cancelled`（只对 `task.list` 有效）或 `include_closed=true`。**例外（仅 `task.list`）**：传 `has_risk=true` 或 `risk_open=true` 且未显式传 `status` 时自动包含终态——带隐患完成的任务大多已经 `done`/`cancelled`，否则复盘筛选会漏掉主要对象；显式 `status` 仍然优先。`task.tree` 过滤时会把已结束父节点下的未结束子代提升一级，不会连带藏掉仍在进行的子任务。
 
 **查询默认省略描述**：`task.list` 与 `task.tree` 默认返回 `description_md: null`，因为描述里可能内嵌 base64 截图；需要正文时显式传 `include_description=true`。任务详情（REST `GET /api/tasks/{id}`）与写操作回执仍返回完整描述。
+
+**查询默认省略卡片正文**：`card.list` 默认把 `body_md` / `background_md` / `goal_md` / `research_md` / `decision_md` / `message_md` 返回为 `null`，改为给出 `preview_md`——从 `body_md` → `background_md` → `goal_md` 取第一个非空值，截断约 240 字符，保留 Markdown 原文。需要完整正文时显式传 `include_body=true`（按 `task_id` 读任务信息流也一样）；单卡详情（REST `GET /api/cards/{id}`、`card.get`）始终完整，不受此开关影响。
 
 ---
 
@@ -336,6 +339,8 @@ memory.get(project)                           # 只有需要全文时才读，�
 
 `result` 用 `success` / `failed` / `blocked` / `partial`。这张卡是任务完成的**证据**，`summary` 不能为空。
 
+`status` 与 `handoff` **不接受 `body_md`**：正文分别写 `detail_md` 与 `message_md`，传了会直接 `INVALID_ARGUMENT`。`body_md` 只用于 `info`。
+
 ### 4.6 `artifact`
 
 ```json
@@ -382,6 +387,7 @@ stateDiagram-v2
     blocked --> in_progress: unblock
     in_progress --> done: complete
     in_progress --> failed: fail
+    failed --> pending: retry
     draft --> cancelled: cancel
     pending --> cancelled: cancel
     claimed --> cancelled: cancel
@@ -392,6 +398,8 @@ stateDiagram-v2
 **`defer` / `undefer` 不在上面这张图里**：暂缓是“决定先不做”的覆盖层，不改变 `status`。`pending` 任务暂缓后仍是 `pending`（没人认领），只是任务树多一个“已暂缓”徽标和原因，不再被误读成“排队等人接”。
 
 **`flag_risk` / `unflag_risk` 也不改状态**：隐患是“为了按时收口而留下的已知缺陷”的覆盖层，用来复盘“这次带病完成是否是正确取舍”。它可作用于**任何状态（含 `done`/`failed`/`cancelled`）**，不需要 `claim_token`——任务完成后令牌早已释放，若仍要求令牌，事后补记就无法进行。解除隐患不删除原文，只写 `risk_resolved_at`。
+
+**`retry` 是 `failed` 的专用出口**：只允许 `failed → pending`，`reason` 必填，不需要 `claim_token`（进入 `failed` 时令牌已清空）。它会清空 `fail_reason`/`failed_at` 与上一轮的 `claimed_by`/`claim_token`/`claim_expires_at`，但保留 `started_at`/`claimed_at`，让人能看出“这是重做，不是新任务”。任务回到待认领队列后必须重新 `claim` 才能执行。`done`/`cancelled` 没有这个出口——它们仍不可逆。用于误标失败、或决定把已经失败的任务重做一遍。
 
 ### 5.2 创建与认领
 
@@ -446,6 +454,7 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 | `complete` | done | `claim_token`、证据 |
 | `fail` | failed | `claim_token`、`reason` |
 | `cancel` | cancelled | `reason` |
+| `retry` | pending | `reason`；仅 `failed` 可用，无需 `claim_token`（清空失败原因与上一轮租约；保留 `started_at`/`claimed_at`） |
 | `defer` | 不变 | `reason`、可选 `deferred_until`；仅 `draft`/`pending`，无需 `claim_token` |
 | `undefer` | 不变 | 任务当前必须处于暂缓，否则 `CONFLICT TASK_NOT_DEFERRED` |
 | `flag_risk` | 不变 | `reason`（写清“留了什么坑”）；任何状态可用，无需 `claim_token`；重新标记会清空 `risk_resolved_at` |
@@ -529,7 +538,7 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 ## 6. 安全约束
 
 - **不发凭据**：令牌、密码、私钥、API key 一律不进卡片正文、`message_md`、日志。
-- **令牌来源**：只从 `AIDASH_TOKEN` 环境变量读，不落盘、不硬编码。
+- **凭据来源**：只从 `AIDASH_TOKEN` 环境变量读，不落盘、不硬编码；它可以是短口令，但不要写进卡片/日志。`AIDASH_PASSPHRASE` 仅作弃用别名。
 - **LLM 密钥同样不进卡片**：设置页写入的模型密钥由服务端加密保存（`~/.aidash/secrets.json`），agent 不读取、不转述、不写进任务描述；需要配置时提示用户到“设置 → LLM 配置”。`AIDASH_LLM_API_KEY` 只是兜底来源，不是让 agent 代填的通道。
 - **知识库只读**：`kb.*` 只能读。要改文档，走用户和版本控制，不要试图写。
 - **不代持第三方凭据**：工单账号、git 凭据只在 harness 自己的环境里；AIDash 不中转。
@@ -626,7 +635,7 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
    - 自己发现的活 → task.create → task.update(event="submit")
                     → task.claim → task.update(event="start")
 4. 干活……
-5. 遇到岔路 → card.ask(...)            # 四段背景 + 选项优缺点/主备推荐；最多等 300 秒
+5. 遇到岔路 → card.ask(...)            # 四段背景 + 选项优缺点/主备推荐；MCP 最多等 25 秒（REST 300 秒）
    - answered → 继续
    - pending  → 记下 card_id，先做别的
 6. 干完 → card.post(type="status", task_id=..., summary=...)
@@ -642,7 +651,7 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 | contract_version | 日期 | 变更 |
 |---|---|---|
 | 1.0 | 2026-10-23 | 首版：8 节 + 六类型模板 + 错误码 + 完成定义 |
-| 2.0 | 2026-10-24 | **破坏性**（按 04 §6.3 升主版本）：question 卡必须写齐四段背景（`background_md`/`goal_md`/`research_md`/`decision_md`）；每个选项必须写 `pros_md`/`cons_md`，且恰好一个 `primary`、一个 `backup`；`channel.upsert` 增加 `workdir`；`card.list` 支持 `project` 过滤；`TaskView` 增加时间线与阻塞/失败原因。旧 `recommendation` 字段仅作兼容读取 |
+| 2.0 | 2026-10-24 | **破坏性**（按 04 §6.4 升主版本）：question 卡必须写齐四段背景（`background_md`/`goal_md`/`research_md`/`decision_md`）；每个选项必须写 `pros_md`/`cons_md`，且恰好一个 `primary`、一个 `backup`；`channel.upsert` 增加 `workdir`；`card.list` 支持 `project` 过滤；`TaskView` 增加时间线与阻塞/失败原因。旧 `recommendation` 字段仅作兼容读取 |
 | 3.0 | 2026-10-24 | **破坏性**：`cancel` 事件新增必填 `reason`，写入 `cancel_reason`；新增 §5.5 会话恢复检查；明确“执行中的任务不得留在 `pending`”与子代理任务的认领归属；`TaskView` 增加 `cancel_reason` |
 | 3.1 | 2026-10-24 | 非破坏性：新增 §9 操作授权默认策略（可逆操作自动执行，不可逆仍须决策卡）；§1 登记项目级 `.mcp.json` 接入方式（`${AIDASH_TOKEN}` 占位） |
 | 3.2 | 2026-10-24 | 非破坏性：建议改为 `task.create(kind="suggestion")` 的 `draft` 任务（不再发 `suggestion` 卡）；会话开场恢复检查必须覆盖 `draft` 建议并先汇报；决策已回答/建议已批准后直接继续，不重复提问；任务表新增 `kind` 列（迁移 004） |
@@ -661,3 +670,9 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 | 4.10 | 2026-10-24 | 非破坏性（可读性）：新增 §3.8 内容写作规范（信息/记忆/汇报通用）——结论先行、大白话、`**加粗**` 标关键结论、`==高亮==` 标风险与待办、行内代码只放命令/路径/字段、给出长度上限；§3.6 记忆行允许行内 Markdown（`[日期] [key]` 格式不变）；§4.1 info / §4.5 status 模板改为加粗+高亮示例，并注明 handoff 的 `message_md` 不进 Markdown 符号；默认提示词四条同步该规范（真实库需 PATCH 全量更新）；Web 通道树分组与触发器展示组别名、记忆正文与汇报共用排版、汇报/记忆列表支持排序·修改时间·下载 md、汇报支持删除 |
 | 4.11 | 2026-10-25 | 非破坏性（仓库布局破例）：为开源发布补面向外部读者的文件，4.9 的“根目录说明性文件白名单”由 3 项扩为 **6 项**——`README.md`、`README.en.md`（中文主 + 英文忠实翻译，不新增内容）、`LICENSE`、`.gitignore`、`CONTRIBUTING.md`、`docs/`（index / architecture / configuration / mcp-and-cli / contributing）。工程文件（`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`）与四个既有目录（`00-platform/`、`10-aidash/`、`20-spec/`、`30-design/`）不变。新增项只承载“给人看”的说明，**不影响 MCP 契约、工具签名、错误码与任何数据结构**；`docs/` 不得写入 agent 行为规则——行为规则只有本文件与 `skills/aidash-mcp/SKILL.md` 两处真源 |
 | 4.12 | 2026-10-25 | 非破坏性（仓库布局回退）：恢复**拆仓前**的 workspace 布局——`00-platform/`、`10-aidash/` 移入 `40-build/`，`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` 的 pnpm 根同在 `40-build/`；命令统一在仓库根执行 `pnpm -C 40-build ...`，MCP 配置为 `40-build/00-platform/config/mcp.json`；`config.ts` 默认路径回到 `./40-build/10-aidash/{data,backups,dist}`；仓根补齐 `00-admin/` ~ `90-archive/` 十个工作流目录（空目录放 `.gitkeep`）。4.11 的根目录说明性文件白名单（6 项）保持不变。**不影响 MCP 契约、工具签名、错误码与任何数据结构** |
+| 4.13 | 2026-10-25 | 非破坏性：新增任务状态事件 `retry`（仅 `failed → pending`，`reason` 必填、无需 `claim_token`，清空 `fail_reason`/`failed_at` 与上一轮 `claimed_by`/`claim_token`/`claim_expires_at`，保留 `started_at`/`claimed_at`）；用于误标失败或决定重做时把任务重新排队；`task_event` 记 `retry`，审计 `task.retry`；Web 任务详情在 `failed` 状态显示“重新排队”并强制填写理由；`done`/`cancelled` 仍不可逆 |
+| 4.14 | 2026-10-25 | 非破坏性（仓库布局）：删除仓库根 `docs/` 目录，内容按主题并入既有事实源——架构总览并入 `30-design/设计文档包/02-系统-子系统设计说明.md` §8，配置并入 `60-deliver/配置模板.md`，MCP/值守壳接口细节并入 `30-design/设计文档包/04-接口设计说明.md`（安装与子命令见 `40-build/20-aidash-runner/README.md`），开发与贡献并入仓根 `CONTRIBUTING.md`，文档入口并入 `README.md` / `README.en.md`。4.11 增列的根目录说明性文件白名单由 6 项回到 5 项（`README.md`、`README.en.md`、`LICENSE`、`.gitignore`、`CONTRIBUTING.md`）。**不影响 MCP 契约、工具签名、错误码与任何数据结构**；行为规则仍只有本文件与 `skills/aidash-mcp/SKILL.md` 两处真源 |
+| 4.15 | 2026-10-25 | 非破坏性：卡片列表 DTO 瘦身——REST `GET /api/cards` 与 MCP `card.list` 新增 `include_body`（默认 `false`）；默认把 `body_md`/`background_md`/`goal_md`/`research_md`/`decision_md`/`message_md` 返回为 `null`，新增 `preview_md`（前三个字段第一个非空值，约 240 字符）；单卡详情（`GET /api/cards/{id}`、`card.get`）与任务信息流仍返回完整正文；Web 列表行改读 `preview_md`，任务信息流显式传 `include_body=true` |
+| 4.16 | 2026-10-25 | 非破坏性：局域网访问与口令登录——`AIDASH_HOST` / 启动脚本 `-BindHost` 可改绑定地址（默认仍 127.0.0.1，非回环启动时 WARN）；新增可选 `AIDASH_PASSPHRASE`（≥8 字符，只从环境变量读，默认不启用），与 `AIDASH_TOKEN` 任一 Bearer 均可认证，Web 登录页接受“令牌或口令”，口令不回显、不写日志/卡片 |
+| 4.17 | 2026-10-25 | 非破坏性：口令改为推荐的默认登录方式——服务端允许仅设 `AIDASH_PASSPHRASE` 启动（令牌变为可选，二者至少一个）；设置页显示口令是否启用；`start-aidash.ps1` 接受只配口令；runner 凭据顺序增加 `AIDASH_PASSPHRASE` 兜底；主 README 补 server + runner 最短接入。安全底线不变：口令≥8、仅环境变量、局域网必须 TLS |
+| 4.18 | 2026-10-25 | 非破坏性：凭据统一为 `AIDASH_TOKEN`——它可以直接填短口令（建议≥8），不再要求单独的 `AIDASH_PASSPHRASE`；后者降为弃用别名，仅兼容旧配置，新文档与设置页只出现 `AIDASH_TOKEN` |

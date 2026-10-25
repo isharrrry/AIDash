@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pickGroupAlias } from '../src/web/src/lib/channel-group.js';
 import { markdownFileName, safeFilename } from '../src/web/src/lib/download.js';
+import { FEED_PAGE_SIZE, toAscendingPage } from '../src/web/src/lib/feed-page.js';
 import { sortMemoryProjects } from '../src/web/src/lib/memory-sort.js';
 
 /**
@@ -92,6 +93,51 @@ const MEMORY_PROJECTS = [
     line_count: 1,
   },
 ];
+
+describe('信息流倒序取窗', () => {
+  it('把服务端倒序结果反转成正序，且不修改入参', () => {
+    // 服务端按 created_at desc 返回：最新在前。
+    const descending = [{ id: 'newest' }, { id: 'middle' }, { id: 'oldest' }];
+    const page = toAscendingPage(descending, descending.length, FEED_PAGE_SIZE);
+
+    expect(page.items.map((item) => item.id)).toEqual(['oldest', 'middle', 'newest']);
+    expect(descending.map((item) => item.id)).toEqual(['newest', 'middle', 'oldest']);
+    expect(page.truncated).toBe(false);
+    expect(page.limit).toBe(FEED_PAGE_SIZE);
+  });
+
+  it('total 大于实收条数时标记截断，并带回总量与窗口大小', () => {
+    const items = Array.from({ length: FEED_PAGE_SIZE }, (_, index) => index);
+    const page = toAscendingPage(items, FEED_PAGE_SIZE + 7, FEED_PAGE_SIZE);
+
+    expect(page.total).toBe(FEED_PAGE_SIZE + 7);
+    expect(page.truncated).toBe(true);
+    expect(page.limit).toBe(FEED_PAGE_SIZE);
+    expect(page.items).toHaveLength(FEED_PAGE_SIZE);
+    // 输入按倒序理解（0 是最新），反转后第一条应是最旧的那个。
+    expect(page.items[0]).toBe(FEED_PAGE_SIZE - 1);
+  });
+
+  it('total 等于实收条数（恰好取满一页）时不误报截断', () => {
+    const page = toAscendingPage([3, 2, 1], 3, FEED_PAGE_SIZE);
+
+    expect(page.truncated).toBe(false);
+    expect(page.total).toBe(3);
+  });
+
+  it('total 小于实收条数（服务端数据异常）时也不提示截断', () => {
+    const page = toAscendingPage([2, 1], 1, FEED_PAGE_SIZE);
+
+    expect(page.truncated).toBe(false);
+  });
+
+  it('total 缺失或非法时回退为实际条数，避免制造假的截断提示', () => {
+    const page = toAscendingPage([2, 1], undefined as unknown as number, FEED_PAGE_SIZE);
+
+    expect(page.total).toBe(2);
+    expect(page.truncated).toBe(false);
+  });
+});
 
 describe('记忆项目排序', () => {
   it('默认按修改时间倒序，未写记忆的项目排最后', () => {

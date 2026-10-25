@@ -99,6 +99,32 @@ describe('卡片服务', () => {
     expect(JSON.stringify(error.details)).not.toContain('abcdefghijklmnop123');
   });
 
+  it('回答文本命中令牌模式时拒绝，且不改变卡片状态', () => {
+    const h = createHarness();
+    harness = h;
+    const { card } = post(
+      h,
+      questionPayload({
+        channel_key: CHANNEL,
+        type: 'question',
+        allow_free_text: true,
+      }),
+    );
+
+    const error = expectAppError(
+      () =>
+        h.ctx.services.cards.answer(
+          card.id,
+          { free_text: 'api_key: abcdefghijklmnop123' },
+          testCtx(),
+        ),
+      'INVALID_ARGUMENT',
+    );
+    expect(error.details?.pattern).toBe('generic_token');
+    // 校验发生在写库前：不能出现“回答被拒绝但卡片已被标记为 answered”。
+    expect(h.ctx.services.cards.get(card.id).status).toBe('open');
+  });
+
   it('question 卡：选项校验、自由文本开关、并发回答只成功一次', () => {
     const h = createHarness();
     harness = h;
@@ -253,6 +279,45 @@ describe('任务服务', () => {
     expect(h.ctx.repos.tasks.get(created.task.id)?.claim_token).toBeNull();
   });
 
+  it('任务描述与状态原因同样做敏感模式扫描', () => {
+    const h = createHarness();
+    harness = h;
+
+    const createError = expectAppError(
+      () =>
+        h.ctx.services.tasks.create(
+          taskCreateSchema.parse({
+            channel_key: CHANNEL,
+            title: '配置任务',
+            description_md: 'secret: abcdefghijklmnop123',
+          }),
+          testCtx(),
+        ),
+      'INVALID_ARGUMENT',
+    );
+    expect(createError.details?.pattern).toBe('generic_token');
+
+    const { task } = h.ctx.services.tasks.create(
+      taskCreateSchema.parse({ channel_key: CHANNEL, title: '正常任务' }),
+      testCtx(),
+      { submit: true },
+    );
+    expectAppError(
+      () =>
+        h.ctx.services.tasks.update(
+          {
+            task_id: task.id,
+            event: 'block',
+            reason: 'token: abcdefghijklmnop123',
+          },
+          testCtx(),
+        ),
+      'INVALID_ARGUMENT',
+    );
+    // 原因被拒绝时状态机不能先走一步：任务仍是 pending。
+    expect(h.ctx.services.tasks.get(task.id).status).toBe('pending');
+  });
+
   it('并发认领第二个 harness 得到 ALREADY_CLAIMED', () => {
     const h = createHarness();
     harness = h;
@@ -388,6 +453,49 @@ describe('知识库', () => {
     expectAppError(() => kb.get('../outside.md'), 'INVALID_ARGUMENT');
     expect(kb.stats().docs).toBe(1);
     expect(kb.listDocs().items).toHaveLength(1);
+  });
+
+  it('中文数字混排按类别分词，FTS 特殊字符不会造成降级', () => {
+    const h = createHarness();
+    harness = h;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aidash-kb-mixed-'));
+    try {
+      fs.writeFileSync(
+        path.join(root, 'login.md'),
+        [
+          '---',
+          'type: runbook',
+          'tags: [auth]',
+          '---',
+          '# 登录排查',
+          '',
+          '登录500 表示登录接口返回 500。',
+          'login 失败时先查网关白名单。',
+          'C++ "quoted" * 只是特殊字符样例。',
+        ].join('\n'),
+        'utf8',
+      );
+      const kb = new KbService(() => root, new KbRepo(h.db), h.clock);
+      expect(kb.index().indexed).toBe(1);
+
+      // 旧实现把“登录500”整段逐字拆成短语 "登 录 5 0 0"，而索引 token 是 500，必然 0 命中。
+      expect(kb.search('登录500').items.map((item) => item.path)).toContain('login.md');
+      // 空白只是分隔符：带不带空格应命中同一篇文档。
+      expect(kb.search('登录 500').items.map((item) => item.path)).toContain('login.md');
+      // 纯中文、纯英文查询不回归；degraded=false 证明走的是 FTS 而不是 LIKE 兜底。
+      const chinese = kb.search('登录');
+      expect(chinese.items.map((item) => item.path)).toContain('login.md');
+      expect(chinese.degraded).toBe(false);
+      const english = kb.search('login');
+      expect(english.items.map((item) => item.path)).toContain('login.md');
+      expect(english.degraded).toBe(false);
+      // 引号、加号、星号都是 FTS5 语法字符：分词时丢弃，不能抛语法错误降级到 LIKE。
+      const special = kb.search('C++ "quoted" *');
+      expect(special.degraded).toBe(false);
+      expect(special.items.map((item) => item.path)).toContain('login.md');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

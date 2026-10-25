@@ -6,6 +6,7 @@ import type { Ctx, MemoryDigestResult, MemoryDigestRunView } from '../../shared/
 import type { Db } from '../db/connection.js';
 import type { MemoryDigestRepo, MemoryDigestRow } from '../repos/memory-digest-repo.js';
 import type { AuditService } from './audit-service.js';
+import { BatchRunner } from './batch-runner.js';
 import type { LlmService } from './llm-service.js';
 import type { MemoryService } from './memory-service.js';
 import type { SettingsService } from './settings-service.js';
@@ -56,26 +57,43 @@ export class MemoryDigestService {
   private scheduledRunning = false;
   private intervalTimer: NodeJS.Timeout | null = null;
   private startupTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
+  /** 在途归纳与报告批次共用启停/取消语义：每条归纳各持一个 AbortController。 */
+  private readonly batches = new BatchRunner();
+  private scheduledPromise: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: MemoryDigestDeps) {}
 
   start(): void {
+    this.stopped = false;
     this.intervalTimer = setInterval(() => {
-      void this.runScheduled();
+      this.scheduledPromise = this.runScheduled().catch(() => {});
     }, CHECK_INTERVAL_MS);
     this.intervalTimer.unref?.();
 
     this.startupTimer = setTimeout(() => {
-      void this.runScheduled();
+      this.scheduledPromise = this.runScheduled().catch(() => {});
     }, STARTUP_DELAY_MS);
     this.startupTimer.unref?.();
   }
 
   stop(): void {
+    this.stopped = true;
+    this.batches.abortAll();
     if (this.intervalTimer) clearInterval(this.intervalTimer);
     if (this.startupTimer) clearTimeout(this.startupTimer);
     this.intervalTimer = null;
     this.startupTimer = null;
+  }
+
+  /**
+   * 等定时批次与手动归纳都收尾。
+   *
+   * 与 EnrichmentService 同理：stop() 只阻止新任务并 abort 在途请求，
+   * 运行记录（成功/失败/取消）仍要写库；必须在 db.close() 之前等完。
+   */
+  async waitForIdle(): Promise<void> {
+    await Promise.allSettled([this.batches.waitForIdle(), this.scheduledPromise]);
   }
 
   listRuns(project: string, limit = 10): MemoryDigestRunView[] {
@@ -93,14 +111,22 @@ export class MemoryDigestService {
       throw new AppError('CONFLICT', 'DIGEST_RUNNING', { project });
     }
     this.running.add(project);
+    // 用 batch runner 跟踪在途归纳：关机等待覆盖“已经进入模型调用”的请求，
+    // 同时拿到可 abort 的 signal，与报告批次保持同一套取消语义。
+    const task = this.batches.run(`digest:${project}`, (signal) =>
+      this.execute(project, trigger, signal),
+    );
+    // 停机后手动调用仍应像旧实现一样被取消，而不是重新开一个未被 abort 的请求。
+    if (this.stopped) this.batches.abort(`digest:${project}`);
     try {
-      return await this.execute(project, trigger);
+      return await task;
     } finally {
       this.running.delete(project);
     }
   }
 
   private async runScheduled(): Promise<void> {
+    if (this.stopped) return;
     const settings = this.deps.settings.current();
     if (!settings.memoryDigestEnabled || !this.deps.llm.isConfigured()) return;
     if (this.scheduledRunning) return;
@@ -110,6 +136,8 @@ export class MemoryDigestService {
       const intervalMs = settings.memoryDigestIntervalHours * HOUR_MS;
       let started = 0;
       for (const project of projects) {
+        // 关机信号可能在两个项目之间到达：停止后不再启动新的归纳。
+        if (this.stopped) break;
         if (started >= MAX_PROJECTS_PER_TICK) break;
         if (this.running.has(project)) continue;
         const last = this.deps.digest.last(project);
@@ -126,6 +154,7 @@ export class MemoryDigestService {
   private async execute(
     project: string,
     trigger: 'manual' | 'schedule',
+    signal: AbortSignal,
   ): Promise<MemoryDigestRunView> {
     const now = this.deps.clock.now();
     const settings = this.deps.settings.current();
@@ -176,6 +205,7 @@ export class MemoryDigestService {
         user: buildUserPrompt(project, windowStart, now, source.lines, this.existingMemory(project)),
         timeoutMs: settings.enrichmentTimeoutMs,
         maxTokens: 2_048,
+        signal,
       });
       const lines = sanitizeDigestLines(content);
       if (lines.length === 0) {
@@ -196,7 +226,10 @@ export class MemoryDigestService {
 
       const ctx: Ctx = {
         actorLabel: 'memory-digest',
-        requestId: `digest_${id}`,
+        // audit_log.request_id 有唯一索引：同一批次先写 memory.append 审计，
+        // 若这里也用 digest_<id>，后面的 memory.digest 汇总行会被降级成 null。
+        // 加 _append 后缀既保留批次关联，又让两条审计各自可追踪。
+        requestId: `digest_${id}_append`,
         isOwner: false,
       };
       const appended = this.deps.memory.append({ project, lines, dedupe: true }, ctx);
@@ -338,7 +371,9 @@ export class MemoryDigestService {
       createdAt: input.windowEnd,
     });
     this.deps.audit.record(
-      { actorLabel: 'memory-digest', requestId: '', isOwner: false },
+      // 用运行 id 作为请求 id：手动归纳没有 HTTP 请求上下文，
+      // 空串会让审计行失去与 digest_runs 的关联；同一批次的事件应能串起来。
+      { actorLabel: 'memory-digest', requestId: `digest_${input.id}`, isOwner: false },
       'memory.digest',
       input.result === 'failed' ? 'error' : 'ok',
       'project_memory',

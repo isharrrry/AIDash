@@ -5,6 +5,17 @@ import { testLlm, updateSettings } from '../api/endpoints';
 import type { LlmMode, LlmTestView, SettingsView } from '../types';
 import { useToast } from './Toast';
 
+/**
+ * 页面密钥「解不开」的原因码 → 人话。
+ * 只做展示映射：真实的排查细节留在服务端日志，前端不猜测、不展示任何密钥片段。
+ */
+const KEY_ERROR_TEXT: Record<string, string> = {
+  master_key_missing: '主密钥文件 master.key 缺失',
+  master_key_invalid: '主密钥文件 master.key 损坏（长度不对或读不出来）',
+  decrypt_failed: '密文与当前主密钥不匹配（可能换过钥匙或文件被改坏）',
+  secrets_file_invalid: '密钥文件 secrets.json 已损坏',
+};
+
 const MODE_OPTIONS: Array<{ value: LlmMode; label: string; hint: string }> = [
   { value: 'fast', label: 'fast', hint: '最快、最省：适合短卡片分析' },
   { value: 'standard', label: 'standard', hint: '平衡：日常分析/归纳' },
@@ -103,6 +114,13 @@ export function LlmSettingsPanel({
         ? '环境变量'
         : '未配置';
 
+  // 「配过但解不开」必须单独喊出来：它和「没配」看起来都是没有可用密钥，
+  // 但处置完全不同——前者要找回/重设，后者只要粘贴一个。
+  const keyStateWarning =
+    llm.key_state === 'unreadable'
+      ? `页面保存的密钥当前无法解密：${KEY_ERROR_TEXT[llm.key_error ?? ''] ?? '原因未知'}。增强分析不会使用它。请重新粘贴密钥，或恢复 master.key 后重启。`
+      : null;
+
   return (
     <section className="panel" aria-label="LLM 配置">
       <header className="panel-header">
@@ -172,12 +190,23 @@ export function LlmSettingsPanel({
             type="password"
             value={apiKey}
             autoComplete="off"
-            placeholder={llm.has_api_key ? '已配置；留空表示不修改' : '粘贴密钥后保存即可使用'}
+            placeholder={
+              llm.key_state === 'unreadable'
+                ? '页面密钥已失效，重新粘贴即可覆盖'
+                : llm.has_api_key
+                  ? '已配置；留空表示不修改'
+                  : '粘贴密钥后保存即可使用'
+            }
             onChange={(event) => setApiKey(event.target.value)}
           />
           <span className="muted small">
             来源：{keySourceText} · 加密文件：<code>{llm.key_path}</code>
           </span>
+          {keyStateWarning ? (
+            <span className="warn-text small" role="alert">
+              {keyStateWarning}
+            </span>
+          ) : null}
         </label>
 
         <div className="inline wrap">

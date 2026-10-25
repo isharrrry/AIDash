@@ -254,13 +254,6 @@ export interface Ctx {
   isOwner: boolean;
 }
 
-export interface PageQuery {
-  page?: number;
-  page_size?: number;
-  sort?: string;
-  order?: 'asc' | 'desc';
-}
-
 /**
  * 决策项的角色。
  *
@@ -323,6 +316,15 @@ export interface CardView {
   research_md: string | null;
   decision_md: string | null;
   message_md: string | null;
+  /**
+   * 列表预览正文：服务端从 body_md / background_md / goal_md 取第一个非空，
+   * 截断到约 240 字符，保留 Markdown 原文。
+   *
+   * 列表默认把上述重字段置 null（避免一页 200 张卡把全文带回来），
+   * 展示层只读这个字段；需要全文的调用方显式传 include_body=true，
+   * 或走单卡详情。详情响应同样会带这个字段，方便前端复用排版。
+   */
+  preview_md: string | null;
   summary: string | null;
   detail_md: string | null;
   severity: 'info' | 'warn' | 'critical' | null;
@@ -444,7 +446,6 @@ export interface TreeNode extends TaskView {
 export interface ChannelView {
   id: string;
   channel_key: string;
-  key: string;
   title: string | null;
   /** 展示用别名；Web 默认优先显示它，空值回退到 topic/title/channel_key。 */
   alias: string | null;

@@ -51,6 +51,14 @@ export interface LlmChatInput {
    * 用户取消不能显示成“模型超时”，否则会误导排查方向。
    */
   signal?: AbortSignal;
+  /**
+   * 空响应时的额外重试次数（默认 0）。
+   *
+   * 为什么要按调用方开关而不是全局默认：空响应既可能是上游瞬时抖动，
+   * 也可能是内容被过滤/参数确实不兼容；对高频的增强分析盲目重试会放大费用。
+   * 汇报生成一次成本高、失败代价大，才值得多试一次。
+   */
+  retryOnEmpty?: number;
 }
 
 export interface LlmTestResult {
@@ -149,7 +157,23 @@ export class LlmService {
     }
     const content = extractContent(payload);
     if (!content.trim()) {
-      throw new AppError('INTERNAL', 'LLM_EMPTY_RESPONSE');
+      const finishReason = extractFinishReason(payload);
+      const retries = input.retryOnEmpty ?? 0;
+      if (retries > 0) {
+        // 等一小会儿再试：上游偶发的空响应往往在下一跳就恢复；
+        // 若 finish_reason=length，说明输出预算被吃掉，重试时把预算翻倍（上限 8192）。
+        const nextTokens =
+          finishReason === 'length'
+            ? Math.min(8192, (input.maxTokens ?? mode.maxTokens) * 2)
+            : input.maxTokens;
+        await sleep(250);
+        return this.chat({ ...input, maxTokens: nextTokens, retryOnEmpty: retries - 1 });
+      }
+      // 只暴露稳定的 finish_reason，便于判断是长度截断还是内容过滤；
+      // 不回传模型输出或上游响应体。
+      throw new AppError('INTERNAL', 'LLM_EMPTY_RESPONSE', {
+        finish_reason: finishReason ?? 'unknown',
+      });
     }
     return content;
   }
@@ -254,6 +278,19 @@ function extractContent(payload: unknown): string {
       .join('');
   }
   return '';
+}
+
+/** 空响应重试之间留一点间隔；直接立刻重放容易撞上同一跳的上游状态。 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** OpenAI 兼容的结束原因；缺失时返回 undefined，由调用方统一写成 unknown。 */
+function extractFinishReason(payload: unknown): string | undefined {
+  const choices = (payload as { choices?: unknown })?.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return undefined;
+  const reason = (choices[0] as { finish_reason?: unknown })?.finish_reason;
+  return typeof reason === 'string' ? reason : undefined;
 }
 
 function isTimeout(error: unknown): boolean {

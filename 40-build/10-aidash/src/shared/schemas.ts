@@ -42,6 +42,10 @@ export const TASK_EVENTS = [
   'fail',
   'cancel',
   'release',
+  // retry 是 failed 的专用出口：只允许 failed → pending，意义是“重新排队”。
+  // 与 submit 的区别：submit 从 draft 进入队列，retry 把已结束的失败任务放回队列；
+  // 服务层要求 reason 必填，并清空失败原因与租约字段（见 task-service.ts）。
+  'retry',
   // defer/undefer 不改变状态，只写“暂缓原因/计划恢复时间”覆盖层；
   // 放同一枚举是为了让 MCP 与 REST 共用一条 task.update 校验路径。
   'defer',
@@ -267,6 +271,23 @@ export const cardPostSchema = cardPostBase.superRefine((value, ctx) => {
         Boolean(value.task_id),
         `${value.type} requires task_id（信息必须挂在任务下）`,
       );
+    }
+    // status/handoff 的正文使用专属字段（detail_md / message_md）。
+    // 过去 body_md 在这两类卡上既不报错也不落库，属于静默丢弃：
+    // 调用方以为正文已写，实际查回来是空。现在入口直接拒绝，并指出该改用哪个字段。
+    if (value.type === 'status' && value.body_md != null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['body_md'],
+        message: 'status 卡不支持 body_md，正文请用 detail_md',
+      });
+    }
+    if (value.type === 'handoff' && value.body_md != null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['body_md'],
+        message: 'handoff 卡不支持 body_md，正文请用 message_md',
+      });
     }
     switch (value.type) {
       case 'info':

@@ -5,6 +5,25 @@ import type { AuditFilter, AuditRepo } from '../repos/support-repos.js';
 const SECRET_KEY = /token|secret|password|passwd|api[_-]?key|authorization/i;
 
 /**
+ * 审计链校验结果的缓存时长。
+ *
+ * 为什么必须缓存：`verifyChain()` 会把整张 audit_log 读进内存并逐行重算 sha256。
+ * 而设置页每 30 秒轮询一次 `/api/health`，原先每次轮询都要全量校验一次；
+ * 审计表只增不删，行数越大，健康检查越慢，最终会把事件循环卡住。
+ * 改成缓存后，健康检查最多每 10 分钟触发一次全量校验，其余请求只读快照。
+ *
+ * 代价是“断链”最多延迟一个 TTL 才被发现；需要立即确认时走 POST /api/audit/verify。
+ */
+const VERIFY_CACHE_TTL_MS = 10 * 60 * 1000;
+
+export interface AuditChainStatus {
+  ok: boolean;
+  broken_at?: number;
+  /** 本次真实校验发生的时刻；缓存命中时仍是上一次校验的时间。 */
+  checked_at: string;
+}
+
+/**
  * 审计写入的唯一入口。
  *
  * 两条纪律：
@@ -13,6 +32,13 @@ const SECRET_KEY = /token|secret|password|passwd|api[_-]?key|authorization/i;
  *    否则“一次请求发了两张卡”会因唯一约束把正常业务打成 500。
  */
 export class AuditService {
+  /**
+   * 只保存“最近一次真实校验”的结果。
+   * 不缓存中间状态：一旦校验发现断链，缓存里就是断链结果，直到下次按需/过期重算。
+   */
+  private cachedChain: AuditChainStatus | null = null;
+  private cachedAtMs = 0;
+
   constructor(
     private readonly repo: AuditRepo,
     private readonly clock: Clock,
@@ -49,8 +75,24 @@ export class AuditService {
     return this.repo.list(filter);
   }
 
-  verify(): { ok: boolean; broken_at?: number } {
-    return this.repo.verifyChain();
+  /** 立即做一次全量校验，并刷新缓存。按需接口与测试用。 */
+  verifyFresh(): AuditChainStatus {
+    const checkedAt = this.clock.now();
+    const result = this.repo.verifyChain();
+    this.cachedAtMs = checkedAt;
+    this.cachedChain = {
+      ...result,
+      checked_at: new Date(checkedAt).toISOString(),
+    };
+    return this.cachedChain;
+  }
+
+  /** 健康检查用：TTL 内直接返回上次结果，不重复扫全表。 */
+  verifyCached(): AuditChainStatus {
+    if (this.cachedChain && this.clock.now() - this.cachedAtMs < VERIFY_CACHE_TTL_MS) {
+      return this.cachedChain;
+    }
+    return this.verifyFresh();
   }
 }
 

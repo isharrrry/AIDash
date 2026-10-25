@@ -27,8 +27,9 @@ const JSON_BODY_LIMIT = '10mb';
  *
  * 顺序很重要：
  * 1. 安全头与请求 id 最先，错误响应也带 id；
- * 2. JSON 解析在鉴权之前，否则 401 时 body 流没人消费；
- * 3. 限流在鉴权之前，错误的令牌也会消耗配额（防爆破）；
+ * 2. 限流在鉴权之前，错误的令牌也会消耗配额（防爆破）；
+ * 3. JSON 解析在鉴权之后：10MB 请求体的解析本身耗 CPU/内存，
+ *    先解析等于给未认证请求开了免费算力；解析错误也不该抢在 401 前面返回；
  * 4. MCP 与 REST 共用同一份 bearer 校验。
  */
 export function createApp(ctx: AppContext, log: Logger): Express {
@@ -37,14 +38,23 @@ export function createApp(ctx: AppContext, log: Logger): Express {
   app.use(securityHeaders);
   app.use(requestId());
   app.use(accessLog(log));
-  app.use(express.json({ limit: JSON_BODY_LIMIT }));
-  app.use(rateLimit(ctx.config));
+  // 限流只罩 /api 与 /mcp，**不罩静态资源**。
+  // 为什么：一次页面加载就是 index.html + 若干带 hash 的 JS/CSS 分片，
+  // 若它们也吃配额，用户刷新两次就把突发配额耗光、连 API 都调不了。
+  // 这不是「防跑飞」，是误伤 —— 浏览器并发加载静态分片本来就是正常行为，
+  // 而 REQ-FN-028 约束的对象是「每个令牌/harness 的请求」，指向的是业务调用。
+  app.use('/api', rateLimit(ctx.config));
+  app.use('/mcp', rateLimit(ctx.config));
   // 认证只罩住 /api 与 /mcp。
   // 浏览器加载页面和 <script>/<link> 时不会带 Authorization；若全局鉴权，
   // SPA 会在用户输入令牌之前就被 401 挡住，永远打不开。静态产物不含业务数据，
   // 真正的数据边界仍然在 /api 与 /mcp 上。
   app.use('/api', bearerAuth(ctx.config));
   app.use('/mcp', bearerAuth(ctx.config));
+
+  // 解析放在限流与鉴权之后：未认证/已限流的请求不再为 10MB 请求体做 JSON.parse。
+  // 已被拒绝的请求体留在流里，Node 会按连接语义处理；Express 不需要先读空它。
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
   app.get('/healthz', (_req, res) => {
     // 探活同时回答“连的是哪个库”：路径漂移时，空库也能返回 ok，

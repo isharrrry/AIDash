@@ -12,6 +12,10 @@ import type { AssistantMemory, AssistantMemoryView, Ctx } from '../../shared/typ
 import { txImmediate, type Db } from '../db/connection.js';
 import type { AssistantMemoryRepo } from '../repos/assistant-memory-repo.js';
 import type { AuditService } from './audit-service.js';
+import {
+  mergeVersionedLines,
+  writeVersionedDocument,
+} from './versioned-document.js';
 
 export type AssistantMemoryUpdateInput = z.infer<typeof assistantMemoryUpdateSchema>;
 
@@ -91,50 +95,39 @@ export class AssistantMemoryService {
     const dedupe = options.dedupe !== false;
     const outcome = txImmediate(this.db, () => {
       const current = this.memory.get();
-      const base = (current?.content_md ?? '').replace(/\s+$/, '');
-      const existing = new Set(base ? base.split('\n').map((line) => line.trim()) : []);
-      const seen = new Set<string>();
-      const accepted: string[] = [];
-      let skippedDuplicates = 0;
-
-      for (const line of normalized) {
-        const key = line.trim();
-        if (dedupe && (existing.has(key) || seen.has(key))) {
-          skippedDuplicates += 1;
-          continue;
-        }
-        seen.add(key);
-        accepted.push(line);
+      const merged = mergeVersionedLines({
+        currentContent: current?.content_md,
+        lines: normalized,
+        dedupe,
+      });
+      if (merged.accepted.length === 0) {
+        return { memory: current, appended: 0, skippedDuplicates: merged.skippedDuplicates };
       }
 
-      if (accepted.length === 0) {
-        return { memory: current, appended: 0, skippedDuplicates };
-      }
-
-      const next = base ? `${base}\n${accepted.join('\n')}` : accepted.join('\n');
-      if (next.length > MAX_MEMORY_CHARS) {
+      if (merged.content.length > MAX_MEMORY_CHARS) {
         throw new AppError('INVALID_ARGUMENT', 'MEMORY_TOO_LARGE', {
           max_chars: MAX_MEMORY_CHARS,
-          current_chars: base.length,
-          incoming_lines: accepted.length,
+          // 与重构前保持一致：这里的 current_chars 是去掉行尾空白后的基数。
+          current_chars: (current?.content_md ?? '').replace(/\s+$/, '').length,
+          incoming_lines: merged.accepted.length,
           hint: 'AIDash 记忆是长期经验，不是日志；请先整理/删除过期条目',
         });
       }
 
-      const saved = this.memory.upsert(
-        next,
-        current?.version ?? 0,
-        ctx.actorLabel,
+      const saved = writeVersionedDocument({
+        current,
+        content: merged.content,
+        expectedVersion: current?.version ?? 0,
+        actor: ctx.actorLabel,
         now,
-      );
-      if (!saved.ok) {
-        // 事务内理论上不会冲突（同一进程同步执行）；保留分支，未来多进程时不静默丢数据。
-        throw new AppError('CONFLICT', 'MEMORY_VERSION_CONFLICT', {
-          expected_version: current?.version ?? 0,
-          actual_version: saved.actualVersion,
-        });
-      }
-      return { memory: saved.memory, appended: accepted.length, skippedDuplicates };
+        upsert: (content, version, actor, at) =>
+          this.memory.upsert(content, version, actor, at),
+      });
+      return {
+        memory: saved.memory,
+        appended: merged.accepted.length,
+        skippedDuplicates: merged.skippedDuplicates,
+      };
     });
 
     if (outcome.appended > 0) {
@@ -170,21 +163,18 @@ export class AssistantMemoryService {
     assertNoSecrets({ content_md: content });
 
     const now = this.clock.now();
-    const outcome = txImmediate(this.db, () => {
-      const current = this.memory.get();
-      if ((current?.content_md ?? '') === content) {
-        return { memory: current, changed: false };
-      }
-      const saved = this.memory.upsert(content, input.expected_version, ctx.actorLabel, now);
-      if (!saved.ok) {
-        throw new AppError('CONFLICT', 'MEMORY_VERSION_CONFLICT', {
-          expected_version: input.expected_version,
-          actual_version: saved.actualVersion,
-          hint: '先读取最新内容，合并后再用新的 version 保存',
-        });
-      }
-      return { memory: saved.memory, changed: true };
-    });
+    const outcome = txImmediate(this.db, () =>
+      writeVersionedDocument({
+        current: this.memory.get(),
+        content,
+        expectedVersion: input.expected_version,
+        actor: ctx.actorLabel,
+        now,
+        hint: '先读取最新内容，合并后再用新的 version 保存',
+        upsert: (nextContent, version, actor, at) =>
+          this.memory.upsert(nextContent, version, actor, at),
+      }),
+    );
 
     if (outcome.changed) {
       this.audit.record(ctx, 'assistant_memory.update', 'ok', 'assistant_memory', 'assistant', {

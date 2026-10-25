@@ -80,6 +80,56 @@ describe('信息归属', () => {
     expect(listed.body.data?.total).toBe(0);
   });
 
+  it('status/handoff 卡带 body_md 时明确报错，不再静默丢弃', async () => {
+    const { h, a } = await boot();
+    const taskId = seedTask(h, CHANNEL, '正文归属任务');
+
+    // schema 层：错误必须指向 body_md，并告诉调用方该改用哪个字段。
+    const status = cardPostSchema.safeParse({
+      channel_key: CHANNEL,
+      type: 'status',
+      summary: '状态卡',
+      result: 'success',
+      body_md: '这段正文以前会被吞掉',
+      task_id: taskId,
+    });
+    expect(status.success).toBe(false);
+    if (!status.success) {
+      const issue = status.error.issues.find((item) => item.path.join('.') === 'body_md');
+      expect(issue?.message).toContain('detail_md');
+    }
+
+    const handoff = cardPostSchema.safeParse({
+      channel_key: CHANNEL,
+      type: 'handoff',
+      recipient: '某人',
+      channel_kind: 'other',
+      reason: '同步进展',
+      message_md: '正文',
+      body_md: '同义字段',
+      task_id: taskId,
+    });
+    expect(handoff.success).toBe(false);
+    if (!handoff.success) {
+      const issue = handoff.error.issues.find((item) => item.path.join('.') === 'body_md');
+      expect(issue?.message).toContain('message_md');
+    }
+
+    // REST 入口：统一 VALIDATION_FAILED，且不能留下半张卡。
+    const rejected = await api(a, 'POST', '/api/cards', {
+      channel_key: CHANNEL,
+      type: 'status',
+      summary: '状态卡',
+      result: 'success',
+      body_md: '这段正文以前会被吞掉',
+      task_id: taskId,
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error?.message).toBe('VALIDATION_FAILED');
+    const listed = await api<CardPage>(a, 'GET', `/api/cards?channel_key=${CHANNEL}`);
+    expect(listed.body.data?.total).toBe(0);
+  });
+
   it('question 卡允许不挂任务，read_at 初始为 null', async () => {
     const { a } = await boot();
     const created = await api<{

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/shared/errors.js';
-import { ManualClock, fromIso, toIso } from '../src/shared/time.js';
+import { ManualClock } from '../src/shared/time.js';
 import { loadConfig } from '../src/server/config.js';
 import { createLogger } from '../src/server/log.js';
 
@@ -50,17 +50,24 @@ describe('配置加载', () => {
     ).toBe('CONFIG_INVALID');
   });
 
-  it('环境变量优先于文件，文件里的 llm 嵌套对象可兜底', () => {
+  it('环境变量优先于文件，文件里的 llm 嵌套对象可兜底（凭据除外）', () => {
     const file = writeConfig({
-      token: 'file-token',
       host: '0.0.0.0',
       port: 9000,
       enrichment_enabled: true,
-      llm: { endpoint: 'https://file.example/v1', model: 'file-model', api_key: 'file-key' },
+      // 刻意不写 token / api_key：凭据只认环境变量，写进文件会直接让启动失败。
+      // 「文件里的凭据被拒绝」由 config-schema.test.ts 的 CONFIG_SECRET_IN_FILE 用例守着；
+      // 这里只验证非凭据键的优先级与兜底没有被误伤。
+      llm: { endpoint: 'https://file.example/v1', model: 'file-model' },
       max_wait_seconds: 30,
     });
     const config = loadConfig(
-      { AIDASH_TOKEN: 'env-token', AIDASH_HOST: '127.0.0.2', AIDASH_ENRICHMENT_ENABLED: '1' },
+      {
+        AIDASH_TOKEN: 'env-token',
+        AIDASH_HOST: '127.0.0.2',
+        AIDASH_ENRICHMENT_ENABLED: '1',
+        AIDASH_LLM_API_KEY: 'env-key',
+      },
       { configFile: file },
     );
     expect(config.token).toBe('env-token');
@@ -69,7 +76,7 @@ describe('配置加载', () => {
     expect(config.enrichmentEnabled).toBe(true);
     expect(config.llm.endpoint).toBe('https://file.example/v1');
     expect(config.llm.model).toBe('file-model');
-    expect(config.llm.apiKey).toBe('file-key');
+    expect(config.llm.apiKey).toBe('env-key');
     expect(config.maxWaitSeconds).toBe(30);
     expect(config.configSource).toBe(file);
   });
@@ -115,13 +122,6 @@ describe('日志', () => {
 });
 
 describe('时间工具', () => {
-  it('ISO 与毫秒互转，非法输入显式失败', () => {
-    expect(toIso(0)).toBe('1970-01-01T00:00:00.000Z');
-    expect(toIso(null)).toBeNull();
-    expect(fromIso('2026-01-01T00:00:00.000Z')).toBe(Date.UTC(2026, 0, 1));
-    expect(() => fromIso('not-a-date')).toThrow(RangeError);
-  });
-
   it('ManualClock 可设置与推进', () => {
     const clock = new ManualClock(1000);
     expect(clock.now()).toBe(1000);

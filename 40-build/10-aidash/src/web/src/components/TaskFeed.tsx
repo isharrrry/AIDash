@@ -4,6 +4,7 @@ import type { CardView } from '../types';
 import { describeError } from '../api/client';
 import { listCards, markCardRead } from '../api/endpoints';
 import { useAsync } from '../hooks/useAsync';
+import { FEED_PAGE_SIZE, toAscendingPage } from '../lib/feed-page';
 import { formatAbsolute, formatRelative, truncate } from '../lib/format';
 import { openCard } from '../lib/router';
 import { CardTypeBadge, PriorityBadge } from './Badge';
@@ -55,11 +56,14 @@ export function TaskFeed({
     () =>
       listCards({
         task_id: taskId,
-        page_size: 200,
+        // 任务信息流是“详情路径”，这里必须保留完整正文；
+        // 不能读 preview_md，否则用户点开任务只能看到被截断的摘要。
+        include_body: true,
+        page_size: FEED_PAGE_SIZE,
         sort: 'created_at',
-        // 信息流按时间正序：越往下越新，未读通常集中在下方，
-        // 与“翻到下方一条条消除”的操作方向一致。
-        order: 'asc',
+        // 先按倒序取“最近 N 条”，再由 toAscendingPage 反转成正序渲染。
+        // 若这里仍用 asc，拿到的是最旧 N 条：任务卡超过 N 张后新消息永远看不到。
+        order: 'desc',
       }),
     [taskId, reloadNonce],
   );
@@ -75,7 +79,14 @@ export function TaskFeed({
     [readIds],
   );
 
-  const cards = data?.items ?? [];
+  // data.items 是倒序（最新在前）；反转后才是“越往下越新”的阅读顺序。
+  // 是否截断由服务端 total 与实收条数比较得出，不能只看是否刚好取满一页。
+  // limit 用响应里的实际 page_size 而不是请求常量：服务端上限可配置（20~500），
+  // 否则“仅显示最近 200 条”可能和真正加载到的条数对不上。
+  const feed = data
+    ? toAscendingPage(data.items, data.total, data.page_size || FEED_PAGE_SIZE)
+    : null;
+  const cards = feed?.items ?? [];
   const unreadCount = data ? cards.filter((card) => !isRead(card)).length : 0;
 
   // 未读数只在数据真正加载后上报；加载中上报 0 会把任务树红点提前抹掉。
@@ -151,6 +162,14 @@ export function TaskFeed({
       <p className="muted small">
         滚动到卡片即自动标记已读；未读只在任务里消除，决策台只保留待拍板的决策卡。
       </p>
+
+      {/* 窗口被填满且服务端还有更早的卡时，必须明说“这里不是全部”，
+          否则用户会以为任务只有这些消息。 */}
+      {feed?.truncated ? (
+        <p className="muted small">
+          共 {feed.total} 条，仅显示最近 {feed.limit} 条
+        </p>
+      ) : null}
 
       {loading && !data ? <Loading label="加载信息流…" /> : null}
       {error ? <ErrorBox message={error} onRetry={reload} /> : null}

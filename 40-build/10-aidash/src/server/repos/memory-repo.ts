@@ -1,12 +1,12 @@
 import type { ProjectMemory } from '../../shared/types.js';
 import type { Db } from '../db/connection.js';
+import {
+  upsertVersionedDocument,
+  type VersionedDocUpsertResult,
+} from './versioned-doc.js';
 
-export interface MemoryUpsertResult {
-  ok: boolean;
-  /** 成功时是写入后的行；失败时是最新行（可能为 undefined），供服务层报告实际版本。 */
-  memory?: ProjectMemory;
-  actualVersion: number;
-}
+/** 保留原导出名，调用方与测试不需要因为内部重构改 import。 */
+export type MemoryUpsertResult = VersionedDocUpsertResult<ProjectMemory>;
 
 /**
  * project_memory 的数据访问。
@@ -92,8 +92,8 @@ export class MemoryRepo {
   /**
    * 以期望版本号写入整篇内容。
    *
-   * expectedVersion=0 表示“我认为这行还不存在”：用 INSERT ... ON CONFLICT DO NOTHING
-   * 让数据库决定谁先创建；插入失败说明别人已经创建，返回实际版本供上层报冲突。
+   * SQL 仍留在本仓储（表名/主键属于持久化细节），但“期望不存在或期望某版本”
+   * 的分支与冲突回传规则由 versioned-doc 统一实现，和 AIDash 记忆保持一致。
    */
   upsert(
     project: string,
@@ -102,33 +102,31 @@ export class MemoryRepo {
     actor: string | null,
     now: number,
   ): MemoryUpsertResult {
-    if (expectedVersion === 0) {
-      const inserted = this.db
-        .prepare(
-          `INSERT INTO project_memory
-           (project, content_md, version, updated_by, created_at, updated_at)
-           VALUES (?, ?, 1, ?, ?, ?)
-           ON CONFLICT(project) DO NOTHING`,
-        )
-        .run(project, content, actor, now, now);
-      if (inserted.changes === 1) {
-        return { ok: true, memory: this.get(project), actualVersion: 1 };
-      }
-      const current = this.get(project);
-      return { ok: false, memory: current, actualVersion: current?.version ?? 0 };
-    }
-
-    const updated = this.db
-      .prepare(
-        `UPDATE project_memory
-         SET content_md = ?, version = version + 1, updated_by = ?, updated_at = ?
-         WHERE project = ? AND version = ?`,
-      )
-      .run(content, actor, now, project, expectedVersion);
-    if (updated.changes === 1) {
-      return { ok: true, memory: this.get(project), actualVersion: expectedVersion + 1 };
-    }
-    const current = this.get(project);
-    return { ok: false, memory: current, actualVersion: current?.version ?? 0 };
+    return upsertVersionedDocument(
+      {
+        read: () => this.get(project),
+        insert: (nextContent, nextActor, nextNow) =>
+          this.db
+            .prepare(
+              `INSERT INTO project_memory
+               (project, content_md, version, updated_by, created_at, updated_at)
+               VALUES (?, ?, 1, ?, ?, ?)
+               ON CONFLICT(project) DO NOTHING`,
+            )
+            .run(project, nextContent, nextActor, nextNow, nextNow).changes,
+        update: (nextContent, version, nextActor, nextNow) =>
+          this.db
+            .prepare(
+              `UPDATE project_memory
+               SET content_md = ?, version = version + 1, updated_by = ?, updated_at = ?
+               WHERE project = ? AND version = ?`,
+            )
+            .run(nextContent, nextActor, nextNow, project, version).changes,
+      },
+      content,
+      expectedVersion,
+      actor,
+      now,
+    );
   }
 }

@@ -1,12 +1,12 @@
 import type { AssistantMemory } from '../../shared/types.js';
 import type { Db } from '../db/connection.js';
+import {
+  upsertVersionedDocument,
+  type VersionedDocUpsertResult,
+} from './versioned-doc.js';
 
-export interface AssistantMemoryUpsertResult {
-  ok: boolean;
-  /** 成功时是写入后的行；失败时是最新行（可能为 undefined），供服务层报告实际版本。 */
-  memory?: AssistantMemory;
-  actualVersion: number;
-}
+/** 保留原导出名，调用方与测试不需要因为内部重构改 import。 */
+export type AssistantMemoryUpsertResult = VersionedDocUpsertResult<AssistantMemory>;
 
 /** 单行表里唯一的行 id。用常量而不是魔法数字，读代码时能直接看出“只有一行”。 */
 const SINGLETON_ID = 1;
@@ -37,35 +37,33 @@ export class AssistantMemoryRepo {
     actor: string,
     now: number,
   ): AssistantMemoryUpsertResult {
-    if (expectedVersion === 0) {
-      // 期望“还没有记忆”：只允许在确实没有行时插入。
-      // ON CONFLICT DO NOTHING 会把“别人抢先写了”变成 changes=0，而不是覆盖。
-      const inserted = this.db
-        .prepare(
-          `INSERT INTO assistant_memory
-             (id, content_md, version, updated_by, created_at, updated_at)
-           VALUES (?, ?, 1, ?, ?, ?)
-           ON CONFLICT(id) DO NOTHING`,
-        )
-        .run(SINGLETON_ID, content, actor, now, now);
-      if (inserted.changes === 1) {
-        return { ok: true, memory: this.get(), actualVersion: 1 };
-      }
-      return { ok: false, memory: this.get(), actualVersion: this.get()?.version ?? 0 };
-    }
-
-    // 期望某个版本：只有版本仍然匹配才写入，否则把最新版本回传，由调用方合并。
-    const updated = this.db
-      .prepare(
-        `UPDATE assistant_memory
-            SET content_md = ?, version = version + 1, updated_by = ?, updated_at = ?
-          WHERE id = ? AND version = ?`,
-      )
-      .run(content, actor, now, SINGLETON_ID, expectedVersion);
-    if (updated.changes === 1) {
-      const saved = this.get();
-      return { ok: true, memory: saved, actualVersion: saved?.version ?? expectedVersion + 1 };
-    }
-    return { ok: false, memory: this.get(), actualVersion: this.get()?.version ?? 0 };
+    // 插入/更新的分支与冲突回传由 versioned-doc 统一实现；
+    // 单行表只多一个固定 id 条件，仍由本仓储保有表结构知识。
+    return upsertVersionedDocument(
+      {
+        read: () => this.get(),
+        insert: (nextContent, nextActor, nextNow) =>
+          this.db
+            .prepare(
+              `INSERT INTO assistant_memory
+                 (id, content_md, version, updated_by, created_at, updated_at)
+               VALUES (?, ?, 1, ?, ?, ?)
+               ON CONFLICT(id) DO NOTHING`,
+            )
+            .run(SINGLETON_ID, nextContent, nextActor, nextNow, nextNow).changes,
+        update: (nextContent, version, nextActor, nextNow) =>
+          this.db
+            .prepare(
+              `UPDATE assistant_memory
+                  SET content_md = ?, version = version + 1, updated_by = ?, updated_at = ?
+                WHERE id = ? AND version = ?`,
+            )
+            .run(nextContent, nextActor, nextNow, SINGLETON_ID, version).changes,
+      },
+      content,
+      expectedVersion,
+      actor,
+      now,
+    );
   }
 }

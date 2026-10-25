@@ -61,12 +61,17 @@ describe('任务状态机', () => {
     expect(assertTaskTransition(task('blocked'), 'unblock')).toBe('in_progress');
     expect(assertTaskTransition(task('in_progress'), 'complete')).toBe('done');
     expect(assertTaskTransition(task('in_progress'), 'fail')).toBe('failed');
+    // failed 的专用出口：重新排队回 pending，而不是留在终态。
+    expect(assertTaskTransition(task('failed'), 'retry')).toBe('pending');
   });
 
   it('拒绝跳级与非法迁移', () => {
     expect(errorCode(() => assertTaskTransition(task('draft'), 'complete'))).toBe('CONFLICT');
     expect(errorCode(() => assertTaskTransition(task('done'), 'start'))).toBe('CONFLICT');
     expect(errorCode(() => assertTaskTransition(task('pending'), 'block'))).toBe('CONFLICT');
+    // retry 只开给 failed：pending 再排队、done 想重开都必须被状态机挡住。
+    expect(errorCode(() => assertTaskTransition(task('pending'), 'retry'))).toBe('CONFLICT');
+    expect(errorCode(() => assertTaskTransition(task('done'), 'retry'))).toBe('CONFLICT');
   });
 
   it('认领令牌缺失/不匹配分别报错', () => {

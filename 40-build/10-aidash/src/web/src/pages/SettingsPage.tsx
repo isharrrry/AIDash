@@ -11,7 +11,7 @@ import {
 import { useApp } from '../AppContext';
 import { useAsync } from '../hooks/useAsync';
 import { usePolling } from '../hooks/usePolling';
-import { formatAbsolute, formatBytes, formatRelative, healthLabel } from '../lib/format';
+import { formatAbsolute, formatBytes, formatRelative } from '../lib/format';
 import type { HarnessView, HealthView, SettingsView } from '../types';
 import { AuditTable } from '../components/AuditTable';
 import { EmptyState, ErrorBox, Loading } from '../components/Feedback';
@@ -19,6 +19,19 @@ import { LlmSettingsPanel } from '../components/LlmSettingsPanel';
 import { MemoryDigestSettingsPanel } from '../components/MemoryDigestSettingsPanel';
 import { PromptSettingsPanel } from '../components/PromptSettingsPanel';
 import { useToast } from '../components/Toast';
+
+/** 覆盖提示里的键名 → 人话；未知键直接显示原键名，避免新字段被前端吞掉。 */
+const ENV_OVERRIDE_LABELS: Record<string, string> = {
+  enrichment_enabled: '卡片增强开关',
+  enrichment_timeout_ms: 'LLM 超时',
+  llm_endpoint: 'LLM 端点',
+  llm_model: 'LLM 模型',
+  llm_mode: 'LLM 模式',
+  kb_root: '知识库根目录',
+  card_retention_days: '卡片保留天数',
+  audit_min_retention_days: '审计最少保留天数',
+  log_retention_days: '日志保留天数',
+};
 
 /**
  * SCR-05 设置 / 审计 / 健康。
@@ -97,44 +110,27 @@ export function SettingsPage(): ReactElement {
     if (!kbDirty) setKbDraft(s?.kb.root ?? '');
   }, [s?.kb.root, kbDirty]);
   const h = health.data;
-  // 服务端 /api/health 当前返回 status:'ok' + db 对象；设计文档里还有扁平字段。
-  // 统一在这里收窄成字符串，避免把对象直接交给 React 渲染导致整页崩溃。
-  const healthHealthy = h ? h.status === 'ok' || h.ok === true : undefined;
-  const healthBroken = h ? h.status === 'error' || h.ok === false : undefined;
-  const db = h?.db;
-  const dbPath =
-    typeof db === 'object' && db !== null
-      ? db.path ?? '—'
-      : typeof db === 'string'
-        ? db
-        : '—';
-  const dbSize =
-    typeof db === 'object' && db !== null ? formatBytes(db.size_bytes) : '—';
+  // 服务端 /api/health 只返回这一种形状；不再为旧文档里的扁平字段做兼容分支。
+  const healthHealthy = h?.status === 'ok';
+  const healthBroken = h?.status === 'error';
+  const dbPath = h?.db.path ?? '—';
+  const dbSize = formatBytes(h?.db.size_bytes);
   const chain = h?.audit_chain;
-  const chainText =
-    typeof chain === 'boolean'
-      ? chain
-        ? '完整'
+  // 健康检查只返回缓存的校验快照；把“什么时候校验的”一并显示，
+  // 否则用户会把“上次校验是完整的”误读成“此刻一定完整”。
+  const chainCheckedAt = chain?.checked_at
+    ? new Date(chain.checked_at).toLocaleString()
+    : '—';
+  const chainText = chain
+    ? chain.ok
+      ? '完整'
+      : chain.broken_at !== undefined
+        ? `断链（位置 ${chain.broken_at}）`
         : '断链'
-      : chain
-        ? chain.ok
-          ? '完整'
-          : chain.broken_at !== undefined
-            ? `断链（位置 ${chain.broken_at}）`
-            : '断链'
-        : '—';
-  const kbStatus = h?.kb
-    ? healthLabel(h.kb)
-    : s
-      ? s.kb.configured
-        ? '已启用'
-        : '未配置'
-      : '—';
-  const healthStatusText = healthHealthy
-    ? '正常'
-    : healthBroken
-      ? '异常'
-      : h?.status ?? '未知';
+    : '—';
+  // 知识库状态以设置视图为准：/api/health 不返回 kb 字段。
+  const kbStatus = s ? (s.kb.configured ? '已启用' : '未配置') : '—';
+  const healthStatusText = healthHealthy ? '正常' : healthBroken ? '异常' : (h?.status ?? '未知');
 
   return (
     <div className="page">
@@ -173,14 +169,12 @@ export function SettingsPage(): ReactElement {
             <Metric label="数据库大小" value={dbSize} />
             <Metric label="数据库路径" value={dbPath} />
             <Metric label="审计哈希链" value={chainText} />
+            <Metric label="审计链校验时间" value={chainCheckedAt} />
             <Metric label="等待中请求" value={String(h.waiting_requests ?? '—')} />
             <Metric label="知识库" value={kbStatus} />
             <Metric label="运行时长" value={formatUptime(h.uptime_seconds)} />
             <Metric label="版本" value={h.version ?? '—'} />
-            <Metric
-              label="Schema"
-              value={String(h.schema_version ?? s?.server.schema_version ?? '—')}
-            />
+            <Metric label="Schema" value={String(s?.server.schema_version ?? '—')} />
           </div>
         ) : null}
       </section>
@@ -196,6 +190,16 @@ export function SettingsPage(): ReactElement {
 
         {s ? (
           <div className="settings-sections">
+            {s.env_overrides.length > 0 ? (
+              <p className="warn-text small" role="status">
+                <strong>配置覆盖提示：</strong>
+                以下键的页面保存值覆盖了同名环境变量——
+                {s.env_overrides
+                  .map((item) => `${ENV_OVERRIDE_LABELS[item.key] ?? item.key}（${item.env_var}）`)
+                  .join('、')}
+                。页面设置优先，修改环境变量不会生效；这里只提示，不改变现有行为。
+              </p>
+            ) : null}
             <SettingsGroup title="服务端">
               <SettingRow label="监听地址" value={`${s.server.host}:${s.server.port}`} />
               <SettingRow label="数据库" value={s.server.db_path} />
@@ -203,19 +207,23 @@ export function SettingsPage(): ReactElement {
               <SettingRow label="Schema 版本" value={String(s.server.schema_version)} />
             </SettingsGroup>
 
-            <SettingsGroup title="访问令牌">
-              <SettingRow label="标签" value={s.token.label} />
-              <SettingRow label="状态" value={s.token.configured ? '已配置' : '未配置'} />
+            <SettingsGroup title="登录凭据">
+              <SettingRow label="访问令牌" value={s.token.configured ? '已配置' : '未配置'} />
               <p className="muted small">
-                MCP 令牌只在服务端环境变量 AIDASH_TOKEN 中维护；页面只显示
-                “已配置/未配置”，不回传明文，也不回传掩码尾号。
+                凭据只在服务端环境变量 AIDASH_TOKEN 中维护（可以是一句短口令）；
+                页面只显示“已配置/未配置”，不回传明文，也不回传掩码尾号。
               </p>
             </SettingsGroup>
 
             <SettingsGroup title="保留策略">
-              <SettingRow label="卡片" value={`${s.retention.card_days} 天`} />
-              <SettingRow label="审计" value={`${s.retention.audit_days} 天`} />
-              <SettingRow label="日志" value={`${s.retention.log_days} 天`} />
+              <SettingRow label="卡片（超期自动归档）" value={`${s.retention.card_days} 天`} />
+              <SettingRow label="审计（最少保留）" value={`${s.retention.audit_days} 天`} />
+              <SettingRow label="日志（外部系统负责）" value={`${s.retention.log_days} 天`} />
+              <p className="muted small">
+                卡片超过保留天数会自动归档。审计表只增不删，这里配置的是“至少保留多久”，
+                服务不会自动删除更早的记录。服务日志写到 stdout/stderr，
+                轮转与清理由外部日志系统负责。
+              </p>
             </SettingsGroup>
 
             <SettingsGroup title="服务限制">

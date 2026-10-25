@@ -53,8 +53,9 @@ export function kbRouter(ctx: AppContext): Router {
 
   router.post(
     '/reindex',
-    asyncHandler((_req, res) => {
-      ok(res, ctx.services.kb.index());
+    asyncHandler(async (_req, res) => {
+      // 手动重建也走分批版本：大库全量同步扫描会把同一进程里的 API/MCP 一起卡住。
+      ok(res, await ctx.services.kb.indexAsync());
     }),
   );
 

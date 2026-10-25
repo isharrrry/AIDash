@@ -41,6 +41,7 @@ interface ChannelGroup {
  */
 export function ChannelTree({
   channels,
+  total,
   currentChannelKey,
   currentProject,
   loading,
@@ -48,6 +49,8 @@ export function ChannelTree({
   onSelectProject,
 }: {
   channels: ChannelView[];
+  /** 服务端通道总数；大于已加载条数说明树只显示了第一页。 */
+  total: number;
   currentChannelKey: string;
   currentProject: string;
   loading: boolean;
@@ -134,6 +137,14 @@ export function ChannelTree({
             </span>
             <span className="muted small">跨主对话查看</span>
           </button>
+
+          {/* 只取到第一页时明确告知，避免用户以为“通道就这么多”。
+              条数用实际加载数而不是写死 200：服务端 page_size 上限可配置。 */}
+          {total > channels.length ? (
+            <p className="muted small channel-tree-loading">
+              共 {total} 个通道，仅显示前 {channels.length} 个
+            </p>
+          ) : null}
 
           {loading ? <p className="muted small channel-tree-loading">通道加载中…</p> : null}
 
