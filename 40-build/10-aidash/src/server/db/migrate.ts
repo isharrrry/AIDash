@@ -12,7 +12,7 @@ function resolveMigrationsDir(explicit?: string): string {
   if (explicit) return explicit;
   const candidates = [
     path.join(HERE, 'migrations'),
-    path.resolve(process.cwd(), '10-aidash/src/server/db/migrations'),
+    path.resolve(process.cwd(), '40-build/10-aidash/src/server/db/migrations'),
     // 兼容已有的 temp 运行目录（迁移前在旧路径下启动的场景）。
     path.resolve(process.cwd(), 'src/server/db/migrations'),
   ];

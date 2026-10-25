@@ -61,7 +61,7 @@ type RawConfig = Record<string, unknown>;
 const DEFAULTS = {
   host: '127.0.0.1',
   port: 8787,
-  dbPath: './10-aidash/data/aidash.db',
+  dbPath: './40-build/10-aidash/data/aidash.db',
   kbIndexIntervalMs: 5 * MINUTE_MS,
   // 默认开启：没有配置 LLM 时增强会直接 skipped，不会产生请求；
   // 一旦用户把 key/模型配置好，卡片分析与知识库建议就能自动跑起来，
@@ -81,8 +81,8 @@ const DEFAULTS = {
   cardRetentionDays: 365,
   logRetentionDays: 30,
   auditMinRetentionDays: 730,
-  backupDir: './10-aidash/backups',
-  staticDir: './10-aidash/dist/web',
+  backupDir: './40-build/10-aidash/backups',
+  staticDir: './40-build/10-aidash/dist/web',
   logLevel: 'info' as const,
   heartbeatIntervalSeconds: 60,
   offlineThresholdSeconds: 180,

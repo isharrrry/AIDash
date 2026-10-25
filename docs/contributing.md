@@ -8,49 +8,49 @@
 | pnpm | 12.4.1 | `packageManager` 字段固定版本 |
 | SQLite | 内置 | 由 `better-sqlite3` 提供，无需单独安装 |
 
-Windows 注意：`10-aidash/scripts/start-aidash.ps1` 必须保持 **UTF-8 with BOM**。无 BOM 时 PowerShell 会按本地代码页解析，中文直接乱码甚至语法错误。
+Windows 注意：`40-build/10-aidash/scripts/start-aidash.ps1` 必须保持 **UTF-8 with BOM**。无 BOM 时 PowerShell 会按本地代码页解析，中文直接乱码甚至语法错误。
 
 ## 2. 常用命令
 
 ```bash
-pnpm install        # 安装依赖
-pnpm dev            # 开发模式（tsx watch，改服务端代码自动重启）
-pnpm typecheck      # 服务端 + Web 类型检查
-pnpm test           # 单元/集成测试（vitest）
-pnpm coverage       # 测试 + 覆盖率
-pnpm build          # 服务端 → 10-aidash/dist/server（含迁移 SQL 复制）
-pnpm web:build      # 前端   → 10-aidash/dist/web
-pnpm cli:build      # 值守壳 → 10-aidash/dist/cli/aidash-watch.mjs
-pnpm check          # typecheck + test（提交前最小检查）
+pnpm -C 40-build install        # 安装依赖
+pnpm -C 40-build dev            # 开发模式（tsx watch，改服务端代码自动重启）
+pnpm -C 40-build typecheck      # 服务端 + Web 类型检查
+pnpm -C 40-build test           # 单元/集成测试（vitest）
+pnpm -C 40-build coverage       # 测试 + 覆盖率
+pnpm -C 40-build build          # 服务端 → 40-build/10-aidash/dist/server（含迁移 SQL 复制）
+pnpm -C 40-build web:build      # 前端   → 40-build/10-aidash/dist/web
+pnpm -C 40-build cli:build      # 值守壳 → 40-build/10-aidash/dist/cli/aidash-watch.mjs
+pnpm -C 40-build check          # typecheck + test（提交前最小检查）
 ```
 
 ## 3. 测试与覆盖率
 
 ```bash
-pnpm test
+pnpm -C 40-build test
 # 29 个测试文件 / 255 个用例，全部通过
 
-pnpm coverage
-# Statements 84.22% | Branches 73.87% | Functions 90.81% | Lines 86.64%
+pnpm -C 40-build coverage
+# Statements 83.94% | Branches 73.51% | Functions 90.57% | Lines 86.39%
 ```
 
 测试分三类：
 
 | 类型 | 位置 | 例子 |
 |---|---|---|
-| 单元 | `10-aidash/tests/*.test.ts` | 状态机、纯函数、schema 校验、脱敏 |
+| 单元 | `40-build/10-aidash/tests/*.test.ts` | 状态机、纯函数、schema 校验、脱敏 |
 | 集成 | 同上，走真实 HTTP / MCP | REST 路由、MCP 工具全链路、迁移升级 |
-| 手动/浏览器 | `10-aidash/tests/manual/*.mjs` | 无头浏览器 + CDP 断言（不随 CI 跑） |
+| 手动/浏览器 | `40-build/10-aidash/tests/manual/*.mjs` | 无头浏览器 + CDP 断言（不随 CI 跑） |
 
-测试用临时 SQLite 文件，不碰 `10-aidash/data/` 下的真实库。
+测试用临时 SQLite 文件，不碰 `40-build/10-aidash/data/` 下的真实库。
 
 ## 4. 目录与命名约定
 
 | 约定 | 规则 |
 |---|---|
-| 代码位置 | 只在 `10-aidash/src/`；`00-platform/` 只放构建配置 |
+| 代码位置 | 只在 `40-build/10-aidash/src/`；`40-build/00-platform/` 只放构建配置 |
 | 分层 | `http/`、`mcp/` 只做校验与映射；业务在 `services/`；SQL 只在 `repos/` |
-| 迁移 | `10-aidash/src/server/db/migrations/NNN_name.sql`，只增不改；新迁移必须同时补测试 |
+| 迁移 | `40-build/10-aidash/src/server/db/migrations/NNN_name.sql`，只增不改；新迁移必须同时补测试 |
 | 命名 | 变量/函数 `camelCase`；类型/组件 `PascalCase`；常量 `UPPER_SNAKE_CASE` |
 | 类型 | 共享类型与 zod schema 放 `src/shared/`，前后端都从这里取 |
 | 错误 | 统一 `AppError(code, message, details)`；HTTP 与 MCP 各自映射，不抛裸字符串 |
@@ -62,8 +62,8 @@ pnpm coverage
 3. **跑检查**：
 
    ```bash
-   pnpm typecheck && pnpm test
-   pnpm build && pnpm web:build
+   pnpm -C 40-build typecheck && pnpm -C 40-build test
+   pnpm -C 40-build build && pnpm -C 40-build web:build
    ```
 
 4. **改设计文档**（如果行为或接口变了）：按 `30-design/设计文档包/README-核心包.md` 的权威顺序更新，并跑三个自检：
@@ -82,8 +82,8 @@ pnpm coverage
 
 如果改动涉及 MCP 工具、发卡规则或任务状态机，除了代码与设计文档，还要同步：
 
-- `10-aidash/AGENTS.md`（harness 行为契约）
-- `10-aidash/skills/aidash-mcp/SKILL.md`（逐工具示例）
+- `40-build/10-aidash/AGENTS.md`（harness 行为契约）
+- `40-build/10-aidash/skills/aidash-mcp/SKILL.md`（逐工具示例）
 
 这两份是产品的一部分，不是说明文档。
 

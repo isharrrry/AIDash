@@ -1,10 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-// 配置位于 00-platform/config/，向上两级回到 workspace 根（即本仓库根）。
+// 配置位于 40-build/00-platform/config/，向上两级回到 workspace 根 40-build/。
 // 显式指定 root，避免 vitest 把配置目录当作 root 而找不到 tests 与 src。
-// root 固定为 workspace 根：vitest 的缓存默认写在 <root>/node_modules 下，
-// 与 pnpm 的依赖目录同处一处，不会散落到其他层级。
+// root 必须指向 40-build 而不是仓库根：vitest 的缓存默认写在 <root>/node_modules 下，
+// 若指向仓库根就会在仓根生成 node_modules/，破坏“仓根只留说明性文件”的约定。
 const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export default defineConfig({

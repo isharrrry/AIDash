@@ -34,7 +34,7 @@ curl -s "$AIDASH_URL/mcp" \
 - 收到 `401` 立即停止，不要重试——重试只会把错误令牌刷进日志。
 - AIDash 默认只监听 `127.0.0.1`。跨机访问是部署方的显式选择（TLS + 反代），不是 agent 该操心的事。
 
-**Agent 侧接入**：项目级 MCP 配置在 `00-platform/config/mcp.json`（`type: http`，`url: http://127.0.0.1:8787/mcp`），`Authorization` 用 `${AIDASH_TOKEN}` 占位。因为它不再位于仓库根，Claude Code 不会自动发现；启动时加 `claude --mcp-config 00-platform/config/mcp.json`，或把这段配置并入用户级 MCP 设置。一次性设置：把启动 8787 用的令牌写进系统环境变量 `AIDASH_TOKEN`；仓库里不保存明文。若 `AIDASH_TOKEN` 没设置，Claude Code 不会报错，而是把字面量 `${AIDASH_TOKEN}` 发出去，表现是 401——先检查启动 Claude 的进程环境里有没有这个变量。
+**Agent 侧接入**：项目级 MCP 配置在 `40-build/00-platform/config/mcp.json`（`type: http`，`url: http://127.0.0.1:8787/mcp`），`Authorization` 用 `${AIDASH_TOKEN}` 占位。因为它不再位于仓库根，Claude Code 不会自动发现；启动时加 `claude --mcp-config 40-build/00-platform/config/mcp.json`，或把这段配置并入用户级 MCP 设置。一次性设置：把启动 8787 用的令牌写进系统环境变量 `AIDASH_TOKEN`；仓库里不保存明文。若 `AIDASH_TOKEN` 没设置，Claude Code 不会报错，而是把字面量 `${AIDASH_TOKEN}` 发出去，表现是 401——先检查启动 Claude 的进程环境里有没有这个变量。
 
 **第三方 LLM 密钥与 `AIDASH_TOKEN` 不是一回事**：`AIDASH_TOKEN` 是 AIDash 自己的访问令牌，仍然只从环境变量读。用户在“设置 → LLM 配置”里填写的模型 API Key 允许落盘，但服务端只写进 `~/.aidash/secrets.json`（AES-256-GCM，主密钥 `~/.aidash/master.key`），不进 SQLite、不进备份、不进日志、不在任何 API 响应里回显；读取优先级是“页面密钥 > `AIDASH_LLM_API_KEY` 环境变量”。agent 不要索取、转述或写入这张密钥；需要模型能力时，提示用户到页面配置。默认端点为 `https://api.deepseek.com/v1/chat/completions`，默认模型 `deepseek-flash`，默认模式 `max`（`max_tokens` 8192 / temperature 0.2）。
 
@@ -613,7 +613,7 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 
 | skill | 用途 |
 |---|---|
-| `10-aidash/skills/aidash-mcp/SKILL.md` | 23 个工具的逐条调用示例与常见错误 |
+| `40-build/10-aidash/skills/aidash-mcp/SKILL.md` | 23 个工具的逐条调用示例与常见错误 |
 
 ## 附录 B：最小可用流程
 
@@ -660,3 +660,4 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 | 4.9 | 2026-10-24 | 非破坏性（仓库布局）：按职责归位——源码、测试与 harness 契约在 `10-aidash/`，构建脚本与工具配置在 `00-platform/`，MCP 配置在 `00-platform/config/mcp.json`；根目录只保留 `README.md`、`LICENSE` 与 `.gitignore`；命令统一在仓库根执行 `pnpm ...`；MCP 接入改用 `--mcp-config` |
 | 4.10 | 2026-10-24 | 非破坏性（可读性）：新增 §3.8 内容写作规范（信息/记忆/汇报通用）——结论先行、大白话、`**加粗**` 标关键结论、`==高亮==` 标风险与待办、行内代码只放命令/路径/字段、给出长度上限；§3.6 记忆行允许行内 Markdown（`[日期] [key]` 格式不变）；§4.1 info / §4.5 status 模板改为加粗+高亮示例，并注明 handoff 的 `message_md` 不进 Markdown 符号；默认提示词四条同步该规范（真实库需 PATCH 全量更新）；Web 通道树分组与触发器展示组别名、记忆正文与汇报共用排版、汇报/记忆列表支持排序·修改时间·下载 md、汇报支持删除 |
 | 4.11 | 2026-10-25 | 非破坏性（仓库布局破例）：为开源发布补面向外部读者的文件，4.9 的“根目录说明性文件白名单”由 3 项扩为 **6 项**——`README.md`、`README.en.md`（中文主 + 英文忠实翻译，不新增内容）、`LICENSE`、`.gitignore`、`CONTRIBUTING.md`、`docs/`（index / architecture / configuration / mcp-and-cli / contributing）。工程文件（`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`）与四个既有目录（`00-platform/`、`10-aidash/`、`20-spec/`、`30-design/`）不变。新增项只承载“给人看”的说明，**不影响 MCP 契约、工具签名、错误码与任何数据结构**；`docs/` 不得写入 agent 行为规则——行为规则只有本文件与 `skills/aidash-mcp/SKILL.md` 两处真源 |
+| 4.12 | 2026-10-25 | 非破坏性（仓库布局回退）：恢复**拆仓前**的 workspace 布局——`00-platform/`、`10-aidash/` 移入 `40-build/`，`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` 的 pnpm 根同在 `40-build/`；命令统一在仓库根执行 `pnpm -C 40-build ...`，MCP 配置为 `40-build/00-platform/config/mcp.json`；`config.ts` 默认路径回到 `./40-build/10-aidash/{data,backups,dist}`；仓根补齐 `00-admin/` ~ `90-archive/` 十个工作流目录（空目录放 `.gitkeep`）。4.11 的根目录说明性文件白名单（6 项）保持不变。**不影响 MCP 契约、工具签名、错误码与任何数据结构** |

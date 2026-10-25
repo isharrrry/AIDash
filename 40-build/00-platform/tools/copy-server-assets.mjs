@@ -15,9 +15,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SRC_DIR = path.join(ROOT, '10-aidash/src/server/db/migrations');
-const DEST_DIR = path.join(ROOT, '10-aidash/dist/server/db/migrations');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const SRC_DIR = path.join(ROOT, '40-build/10-aidash/src/server/db/migrations');
+const DEST_DIR = path.join(ROOT, '40-build/10-aidash/dist/server/db/migrations');
 
 function assertBootstrap() {
   // 000_bootstrap.sql 是 migrate.ts 用来判定“这个目录是不是迁移目录”的锚点。

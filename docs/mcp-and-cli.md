@@ -14,7 +14,7 @@
 Claude Code 用项目内现成的配置模板：
 
 ```bash
-claude --mcp-config 00-platform/config/mcp.json
+claude --mcp-config 40-build/00-platform/config/mcp.json
 ```
 
 模板内容（`${AIDASH_TOKEN}` 由客户端从环境变量展开，文件里没有明文令牌）：
@@ -137,8 +137,8 @@ MCP 客户端普遍在 30~60 秒判定工具调用超时。如果服务端硬等
 
 | 文件 | 内容 |
 |---|---|
-| [`10-aidash/AGENTS.md`](../10-aidash/AGENTS.md) | 端点与认证、23 个工具的任务边界、六类卡片模板、任务生命周期与完成定义、安全约束、错误处理、会话恢复检查 |
-| [`10-aidash/skills/aidash-mcp/SKILL.md`](../10-aidash/skills/aidash-mcp/SKILL.md) | 逐工具的入参示例与常见错误 |
+| [`40-build/10-aidash/AGENTS.md`](../10-aidash/AGENTS.md) | 端点与认证、23 个工具的任务边界、六类卡片模板、任务生命周期与完成定义、安全约束、错误处理、会话恢复检查 |
+| [`40-build/10-aidash/skills/aidash-mcp/SKILL.md`](../10-aidash/skills/aidash-mcp/SKILL.md) | 逐工具的入参示例与常见错误 |
 
 最小可用流程（摘自 AGENTS.md 附录 B）：
 

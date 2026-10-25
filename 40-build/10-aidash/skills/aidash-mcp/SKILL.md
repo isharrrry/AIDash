@@ -6,7 +6,7 @@ description: AIDash MCP 工具手册。当 agent 需要向用户上报信息、�
 # AIDash MCP 工具手册
 
 > 本手册与 `tools/list` 的 `inputSchema` 同源。两者冲突时以 `tools/list` 为准。
-> 契约总则见 `10-aidash/AGENTS.md`（发布到 harness 仓库时，两份文件都放在该仓库根目录）；本文件只讲“每个工具怎么调”。
+> 契约总则见 `40-build/10-aidash/AGENTS.md`（发布到 harness 仓库时，两份文件都放在该仓库根目录）；本文件只讲“每个工具怎么调”。
 
 ---
 
@@ -35,7 +35,7 @@ export AIDASH_URL="http://127.0.0.1:8787"
 export AIDASH_TOKEN="..."          # 只放环境变量，不要写进仓库
 ```
 
-> 项目级接入以 `00-platform/config/mcp.json` 为准：`aidash` 服务指向 `http://127.0.0.1:8787/mcp`，`Authorization` 用 `${AIDASH_TOKEN}` 占位。该文件不在仓库根，Claude Code 需要用 `--mcp-config 00-platform/config/mcp.json` 显式加载。上面的 `export` 只用于在 shell 里手动发 HTTP；两种方式读的是同一个环境变量。
+> 项目级接入以 `40-build/00-platform/config/mcp.json` 为准：`aidash` 服务指向 `http://127.0.0.1:8787/mcp`，`Authorization` 用 `${AIDASH_TOKEN}` 占位。该文件不在仓库根，Claude Code 需要用 `--mcp-config 40-build/00-platform/config/mcp.json` 显式加载。上面的 `export` 只用于在 shell 里手动发 HTTP；两种方式读的是同一个环境变量。
 
 MCP 调用统一是 JSON-RPC 2.0：
 

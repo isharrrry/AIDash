@@ -6,14 +6,14 @@
 
 1. 读 [README](README.md) 了解它解决什么问题；
 2. 读 [docs/contributing.md](docs/contributing.md) 了解环境、命令、目录约定与已知未验证项；
-3. 如果改动涉及 MCP 工具、发卡规则或任务状态机，先读 [10-aidash/AGENTS.md](10-aidash/AGENTS.md)——它是产品契约，不是普通文档。
+3. 如果改动涉及 MCP 工具、发卡规则或任务状态机，先读 [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md)——它是产品契约，不是普通文档。
 
 ## 提交前检查
 
 ```bash
-pnpm typecheck
-pnpm test
-pnpm build && pnpm web:build
+pnpm -C 40-build typecheck
+pnpm -C 40-build test
+pnpm -C 40-build build && pnpm -C 40-build web:build
 ```
 
 如果改了设计文档，再跑三个自检：

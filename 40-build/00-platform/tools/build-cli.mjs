@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 打包值守壳：10-aidash/src/cli/index.ts → 10-aidash/dist/cli/aidash-watch.mjs
+ * 打包值守壳：40-build/10-aidash/src/cli/index.ts → 40-build/10-aidash/dist/cli/aidash-watch.mjs
  *
  * 为什么用 esbuild bundle：
  * - 值守壳可能被拷到没有 node_modules 的机器上运行，单文件产物最省事；
@@ -13,10 +13,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-// 本文件位于 00-platform/tools/，向上两级回到仓库根。
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const entry = path.join(root, '10-aidash', 'src', 'cli', 'index.ts');
-const outfile = path.join(root, '10-aidash', 'dist', 'cli', 'aidash-watch.mjs');
+// 本文件位于 40-build/00-platform/tools/，向上三级回到仓库根。
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const entry = path.join(root, '40-build', '10-aidash', 'src', 'cli', 'index.ts');
+const outfile = path.join(root, '40-build', '10-aidash', 'dist', 'cli', 'aidash-watch.mjs');
 
 await mkdir(path.dirname(outfile), { recursive: true });
 
@@ -38,7 +38,7 @@ await build({
 
 // Windows 上 chmod 基本是 no-op；POSIX 上让产物可以直接执行。
 await chmod(outfile, 0o755).catch(() => {
-  // 某些文件系统（如部分网络盘）不支持 chmod，不影响 `node 10-aidash/dist/cli/aidash-watch.mjs`。
+  // 某些文件系统（如部分网络盘）不支持 chmod，不影响 `node 40-build/10-aidash/dist/cli/aidash-watch.mjs`。
 });
 
 const info = await stat(outfile);

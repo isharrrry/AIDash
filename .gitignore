@@ -15,8 +15,8 @@ log.txt
 *.db-wal
 *.sqlite
 *.sqlite3
-/10-aidash/data/
-/10-aidash/backups/
+/40-build/10-aidash/data/
+/40-build/10-aidash/backups/
 
 # 值守壳本地配置（含端点与运行时参数，按人不同，不入库）
 aidash-watch.json

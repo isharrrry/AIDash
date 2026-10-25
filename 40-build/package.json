@@ -9,8 +9,8 @@
   },
   "packageManager": "pnpm@12.4.1",
   "scripts": {
-    "dev": "tsx watch 10-aidash/src/server/main.ts",
-    "start": "node 10-aidash/dist/server/main.js",
+    "dev": "cd .. && tsx watch 40-build/10-aidash/src/server/main.ts",
+    "start": "cd .. && node 40-build/10-aidash/dist/server/main.js",
     "start:win": "powershell -NoProfile -File 10-aidash/scripts/start-aidash.ps1",
     "build": "tsc -p 00-platform/config/tsconfig.server.json && node 00-platform/tools/copy-server-assets.mjs",
     "typecheck": "tsc -p 00-platform/config/tsconfig.server.json --noEmit && tsc -p 10-aidash/src/web/tsconfig.json --noEmit",

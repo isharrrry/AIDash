@@ -19,6 +19,24 @@
 
 AIDash 把这些收敛成三样东西：**卡片**、**任务树**、**通道**。它不调度、不派活、不管别的机器，只做一件事：**让你在正确的时间看到正确的那一条**。
 
+### 产品定义
+
+**一句话**：AIDash 是**一个人 + 多个 AI harness** 场景下的**决策与沟通面板**——agent 把需要你知道 / 转发 / 拍板的事写成卡片推上来；你排好的任务，由 harness 或值守壳自己认领执行。
+
+**给谁用**：同时开几个 AI 编码会话的独立开发者；想让多台机器共用一张“活单”的人；需要事后复盘“当时为什么这么改”的人。**不是**给多人协作团队用的——V2 是单用户工具。
+
+**核心闭环**：
+
+```text
+人排任务 → harness 认领 → 本地执行 → 发卡汇报 / 求助
+   ↑                                        ↓
+   └──────────── 人拍板 / 转发 / 调整 ←──────┘
+```
+
+四个落点缺一不可：**排**（任务树）、**认**（带租约的认领）、**做**（harness 本地执行）、**证**（完成前必须有证据卡）。
+
+**不做什么**：不调度、不派活、不主动向任何机器推送任务；不存代码、工作区、制品；不持有第三方系统凭据；不做多用户与权限。完整定义见[需求文档 §1.4](20-spec/需求与验收判据文档.md#14-产品定义)。
+
 ### 核心特性
 
 - **六类卡片**：信息、交接话术、待澄清问题、建议、状态、产物。问题卡支持四段正文（背景 / 目标 / 调研 / 决策）与主备推荐选项。
@@ -36,11 +54,11 @@ AIDash 把这些收敛成三样东西：**卡片**、**任务树**、**通道**�
 
 ```bash
 # 依赖：Node ≥ 24、pnpm 12.4.1
-pnpm install
+pnpm -C 40-build install
 
 # 构建服务端 + 前端
-pnpm build
-pnpm web:build
+pnpm -C 40-build build
+pnpm -C 40-build web:build
 
 # 设置令牌（只从环境变量读，不要写进仓库）
 # Windows:
@@ -48,8 +66,9 @@ set AIDASH_TOKEN=请换成一个足够长的随机串
 # macOS / Linux:
 export AIDASH_TOKEN=请换成一个足够长的随机串
 
-# 启动
-pnpm start
+# 启动（任选其一）
+pnpm -C 40-build start        # 通用：脚本先回到仓库根，避免默认相对路径随 cwd 漂移
+pnpm -C 40-build start:win    # Windows 推荐：额外把 DB / 备份 / 静态目录钉成绝对路径并打印
 ```
 
 打开 `http://127.0.0.1:8787/`，在设置页填入同一个令牌。
@@ -57,14 +76,38 @@ pnpm start
 想让 Claude Code 接上 AIDash：
 
 ```bash
-claude --mcp-config 00-platform/config/mcp.json
+claude --mcp-config 40-build/00-platform/config/mcp.json
 ```
+
+---
+
+## 仓库结构
+
+```text
+AIDash/
+├─ README.md / README.en.md / CONTRIBUTING.md / LICENSE / .gitignore / .gitattributes
+├─ 00-admin/          管理记录：合同、许可、会议纪要（空目录放 .gitkeep）
+├─ 10-input/          只读输入：参考资料与外部样例
+├─ 20-spec/           要做什么：需求与验收判据（唯一需求事实源）
+├─ 30-design/         怎么实现：概要设计、ADR、设计文档包 01~07、三个自检脚本
+├─ 40-build/          唯一代码位置 + pnpm workspace 根
+│  ├─ package.json / pnpm-lock.yaml / pnpm-workspace.yaml
+│  ├─ 00-platform/    构建配置与工具：tsconfig / vitest / mcp.json / 打包脚本
+│  └─ 10-aidash/      服务端 + Web + 值守壳源码；AGENTS.md 与 SKILL.md；tests
+├─ 50-verify/         验证记录
+├─ 60-deliver/        交付物
+├─ 70-operate/        运维记录
+├─ 80-derived/        派生数据与统计
+└─ 90-archive/        归档（只读，不参与检查）
+```
+
+**命令一律在仓库根执行，统一用 `pnpm -C 40-build ...`**。运行时数据（SQLite、备份、构建产物）都在 `40-build/10-aidash/` 下，已被 `.gitignore` 忽略。
 
 ---
 
 ## 核心概念
 
-1. **卡片（Card）**——agent 与人之间的单向信息载体。六种类型各有用途；`question` 卡才会进入“待拍板”队列。详见 [AGENTS.md §3](10-aidash/AGENTS.md)。
+1. **卡片（Card）**——agent 与人之间的单向信息载体。六种类型各有用途；`question` 卡才会进入“待拍板”队列。详见 [AGENTS.md §3](40-build/10-aidash/AGENTS.md)。
 2. **通道（Channel）**——按 `host/project/topic` 分会话的命名空间。同一项目的多个 harness 共享一份“主对话记忆”。详见 [架构 §3.1](docs/architecture.md#31-卡片agent-问人答)。
 3. **任务树（Task Tree）**——人排的“活单”。状态机、认领租约、证据卡、暂缓与隐患都是任务的一等属性。详见 [MCP 与值守壳 §4](docs/mcp-and-cli.md#4-值守壳-aidash-watch)。
 4. **值守壳（`aidash-watch`）**——外部执行代理。自己轮询、自己认领、自己拉起 harness；面板不假装“有人正在跑”。详见 [架构 §1](docs/architecture.md#1-三个交付物)。
@@ -91,8 +134,8 @@ claude --mcp-config 00-platform/config/mcp.json
 | 环境变量、配置文件、启动与备份 | [docs/configuration.md](docs/configuration.md) |
 | MCP 接入、23 个工具、值守壳用法 | [docs/mcp-and-cli.md](docs/mcp-and-cli.md) |
 | 开发环境、测试、贡献流程 | [docs/contributing.md](docs/contributing.md) |
-| Agent 行为契约 | [10-aidash/AGENTS.md](10-aidash/AGENTS.md) |
-| 逐工具手册 | [10-aidash/skills/aidash-mcp/SKILL.md](10-aidash/skills/aidash-mcp/SKILL.md) |
+| Agent 行为契约 | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) |
+| 逐工具手册 | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) |
 | 需求与验收判据（唯一需求事实源） | [20-spec/需求与验收判据文档.md](20-spec/需求与验收判据文档.md) |
 | 概要设计与 ADR（唯一 ADR 事实源） | [30-design/概要设计.md](30-design/概要设计.md) |
 | 设计文档包（01~07 + 界面 + 安全） | [30-design/设计文档包/README-核心包.md](30-design/设计文档包/README-核心包.md) |
@@ -104,12 +147,12 @@ claude --mcp-config 00-platform/config/mcp.json
 ## 开发
 
 ```bash
-pnpm typecheck      # 服务端 + Web 类型检查
-pnpm test           # 29 个测试文件 / 255 个用例
-pnpm coverage       # 覆盖率
-pnpm build          # 服务端 → 10-aidash/dist/server
-pnpm web:build      # 前端   → 10-aidash/dist/web
-pnpm cli:build      # 值守壳 → 10-aidash/dist/cli/aidash-watch.mjs
+pnpm -C 40-build typecheck      # 服务端 + Web 类型检查
+pnpm -C 40-build test           # 29 个测试文件 / 255 个用例
+pnpm -C 40-build coverage       # 覆盖率
+pnpm -C 40-build build          # 服务端 → 40-build/10-aidash/dist/server
+pnpm -C 40-build web:build      # 前端   → 40-build/10-aidash/dist/web
+pnpm -C 40-build cli:build      # 值守壳 → 40-build/10-aidash/dist/cli/aidash-watch.mjs
 ```
 
 **实测环境**：Windows 11（10.0.26100）、Node 24、pnpm 12.4.1、Edge 155（Chromium）。
@@ -122,14 +165,14 @@ pnpm cli:build      # 值守壳 → 10-aidash/dist/cli/aidash-watch.mjs
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
-| 类型检查 | `pnpm typecheck` | 退出码 0 |
-| 单元 / 集成测试 | `pnpm test` | **29 个文件 / 255 个用例全部通过** |
-| 覆盖率 | `pnpm coverage` | 语句 **84.22%** / 分支 73.87% / 函数 90.81% / 行 86.64% |
-| 服务端构建 | `pnpm build` | 成功，复制 **17** 个迁移 SQL 到 `dist` |
-| 前端构建 | `pnpm web:build` | 成功，Vite 构建 630 ms |
-| 值守壳构建 | `pnpm cli:build` | 单文件 **727.3 KiB** |
+| 类型检查 | `pnpm -C 40-build typecheck` | 退出码 0 |
+| 单元 / 集成测试 | `pnpm -C 40-build test` | **29 个文件 / 255 个用例全部通过** |
+| 覆盖率 | `pnpm -C 40-build coverage` | 语句 **83.94%** / 分支 73.51% / 函数 90.57% / 行 86.39% |
+| 服务端构建 | `pnpm -C 40-build build` | 成功，复制 **17** 个迁移 SQL 到 `dist` |
+| 前端构建 | `pnpm -C 40-build web:build` | 成功，Vite 构建 5.5 s（冷缓存） |
+| 值守壳构建 | `pnpm -C 40-build cli:build` | 单文件 **729.0 KiB** |
 | 文档自检 | 三个检查脚本 | **24 / 15 / 6** 项全部通过，退出码 0 |
-| 启动冒烟（空库、临时端口 8795） | `node 10-aidash/dist/server/main.js` + HTTP 探测 | `/healthz` 200（`version=2.0.0`）、`/` 200、无令牌 `/mcp` **401**、`initialize` 200、`tools/list` 返回 **23** 个工具、空库迁移到 `schema_version=16` |
+| 启动冒烟（空库、临时端口 8795） | `node 40-build/10-aidash/dist/server/main.js` + HTTP 探测 | `/healthz` 200（`version=2.0.0`）、`/` 200、无令牌 `/mcp` **401**、`initialize` 200、`tools/list` 返回 **23** 个工具、空库迁移到 `schema_version=16` |
 
 开发过程中的浏览器端到端验证（决策台、任务树、拍板模态框、记忆面板、Markdown/Mermaid 渲染）在 Windows + Edge 无头浏览器 + CDP 上完成；逐轮明细不随仓库发布，口径说明见 [07-质量记录包 §0](30-design/设计文档包/07-质量记录包.md)。
 

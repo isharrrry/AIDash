@@ -13,7 +13,7 @@
  *   2. Edge 以 --remote-debugging-port=9222 --headless=new 启动；
  *   3. 通过 SMOKE_CARD_A / SMOKE_CARD_B 传入两张待决策冒烟卡 id（脚本会选第一项并提交）。
  *
- * 输出：JSON 结果 + 截图，写入 10-aidash/backups/ui-smoke/。
+ * 输出：JSON 结果 + 截图，写入 40-build/10-aidash/backups/ui-smoke/。
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';

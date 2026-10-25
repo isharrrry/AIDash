@@ -13,18 +13,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# scripts -> 10-aidash -> 仓库根
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$dbPath = Join-Path $repoRoot '10-aidash/data/aidash.db'
-$backupDir = Join-Path $repoRoot '10-aidash/backups'
-$staticDir = Join-Path $repoRoot '10-aidash/dist/web'
-$serverEntry = Join-Path $repoRoot '10-aidash/dist/server/main.js'
+# scripts -> 10-aidash -> 40-build -> 仓库根
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+$dbPath = Join-Path $repoRoot '40-build/10-aidash/data/aidash.db'
+$backupDir = Join-Path $repoRoot '40-build/10-aidash/backups'
+$staticDir = Join-Path $repoRoot '40-build/10-aidash/dist/web'
+$serverEntry = Join-Path $repoRoot '40-build/10-aidash/dist/server/main.js'
 
 if (-not $env:AIDASH_TOKEN) {
   throw 'AIDASH_TOKEN is not set. Set it as a user environment variable and reopen the terminal; never put it in this repository.'
 }
 if (-not (Test-Path $serverEntry)) {
-  throw "Server build not found: $serverEntry. Run 'pnpm build' first."
+  throw "Server build not found: $serverEntry. Run 'pnpm -C 40-build build' first."
 }
 
 $env:AIDASH_DB_PATH = $dbPath

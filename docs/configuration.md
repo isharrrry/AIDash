@@ -8,12 +8,12 @@
 
 ```bash
 # 1) 安装依赖
-pnpm install
+pnpm -C 40-build install
 
 # 2) 构建服务端 + 前端（CLI 可选）
-pnpm build
-pnpm web:build
-pnpm cli:build
+pnpm -C 40-build build
+pnpm -C 40-build web:build
+pnpm -C 40-build cli:build
 
 # 3) 设置令牌（只从环境变量读，不要写进仓库或脚本）
 #    Windows（当前终端）：
@@ -22,7 +22,7 @@ set AIDASH_TOKEN=<你的令牌>
 export AIDASH_TOKEN=<你的令牌>
 
 # 4) 启动
-pnpm start          # 等价于 node 10-aidash/dist/server/main.js
+pnpm -C 40-build start          # 等价于 node 40-build/10-aidash/dist/server/main.js
 ```
 
 打开 `http://127.0.0.1:8787/`，在设置页把同一个令牌填进页面即可。
@@ -30,7 +30,7 @@ pnpm start          # 等价于 node 10-aidash/dist/server/main.js
 **Windows 推荐用启动脚本**：
 
 ```powershell
-pnpm start:win
+pnpm -C 40-build start:win
 ```
 
 它会先把数据库、备份、静态目录解析成绝对路径并打印，再启动服务；不会打印令牌。脚本必须保持 **UTF-8 with BOM** 编码，否则 PowerShell 会按本地代码页解析中文而报错。
@@ -114,9 +114,9 @@ pnpm start:win
 
 | 内容 | 位置 | 说明 |
 |---|---|---|
-| 主数据库 | `10-aidash/data/aidash.db` | WAL 模式，伴生 `-wal` / `-shm` |
-| 迁移前备份 | `10-aidash/backups/pre-migrate-*.db` | 每次升级 schema 前自动生成 |
-| 手动备份 | `10-aidash/backups/` | 建议停服后连同 `-wal` / `-shm` 一起拷走 |
+| 主数据库 | `40-build/10-aidash/data/aidash.db` | WAL 模式，伴生 `-wal` / `-shm` |
+| 迁移前备份 | `40-build/10-aidash/backups/pre-migrate-*.db` | 每次升级 schema 前自动生成 |
+| 手动备份 | `40-build/10-aidash/backups/` | 建议停服后连同 `-wal` / `-shm` 一起拷走 |
 
 **空库防护**：启动时如果配置的库文件不存在，但备份目录里已经有 `*.db`，十有八九是路径漂移，此时默认拒绝启动并写日志 `db_missing_with_backups`。确认要新建空库时显式设 `AIDASH_ALLOW_EMPTY_DB=true`。
 
