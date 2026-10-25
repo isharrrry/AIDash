@@ -43,6 +43,14 @@ jobs:
         run: |
           cd 40-build/20-aidash-runner
           npm pack
+      - name: Pack server and web
+        run: |
+          cd 40-build
+          tar -czf ../aidash-dist.tar.gz \
+            package.json pnpm-lock.yaml pnpm-workspace.yaml \
+            10-aidash/dist/server 10-aidash/dist/web
+          cd ..
+          sha256sum aidash-dist.tar.gz > aidash-dist.tar.gz.sha256
       - name: Ensure release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,7 +60,7 @@ jobs:
       - name: Attach package to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$TAG" 40-build/20-aidash-runner/*.tgz --repo "${{ github.repository }}" --clobber
+        run: gh release upload "$TAG" 40-build/20-aidash-runner/*.tgz aidash-dist.tar.gz aidash-dist.tar.gz.sha256 --repo "${{ github.repository }}" --clobber
       - name: Publish runner to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
