@@ -104,5 +104,5 @@ public sealed class HarnessHeartbeat { }
 /// <summary>值守壳回报的进度。</summary>
 public sealed class ProgressReport { }
 
-/// <summary>外部工单：MOD-011 已移出本仓，图上只留一条虚线边界。</summary>
+/// <summary>外部系统（范围外）：MOD-011 已移出本仓，图上只留一条虚线边界。</summary>
 public sealed class ExternalSystemRecord { }

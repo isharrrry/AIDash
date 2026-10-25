@@ -85,7 +85,7 @@ DRAWCODE_TS="$DRAWCODE_TS" node 80-derived/drawcode/checks/同步检查.mjs
 - **边只来自函数体的读写语句**。注释不产生任何边；改注释不会移动任何线。
   这是 drawcode 的核心主张 —— 图跟着代码走，不跟着文档走。
 - **`Direction` 是「相对本模块」**：`In` = 本模块产生，`Out` = 本模块消费。
-  全线只有两处 `Out`：MOD-006 的 OKF 文档（外部只读目录）、MOD-011 的外部工单（已移出本仓）。
+  全线只有两处 `Out`：MOD-006 的 OKF 文档（外部只读目录）、MOD-011 的外部系统（范围外）（已移出本仓）。
 - **不要用 `record`**：drawcode 的 C# 解析器会整段跳过 record 声明，用它会让类型在模型里消失。
 - **函数名全局唯一**：drawcode 的 `rawFuncs` 是 `Map<name, ...>`，同名函数后者覆盖前者。
 

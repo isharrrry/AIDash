@@ -380,7 +380,7 @@
             <mxGeometry x="30" y="272" width="180" height="72" as="geometry" />
           </mxCell>
         </object>
-        <object id="n63" label="Ticket&lt;br&gt;ExternalSystemRecord / out" symbolId="Mod011ExternalSystem.cs::Ticket" kind="signal" ctype="ExternalSystemRecord" dir="out" alias="外部工单">
+        <object id="n63" label="Ticket&lt;br&gt;ExternalSystemRecord / out" symbolId="Mod011ExternalSystem.cs::Ticket" kind="signal" ctype="ExternalSystemRecord" dir="out" alias="外部系统（范围外）">
           <mxCell style="shape=path;path=45,0 160,0 160,60 45,60 0,30;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="grp22">
             <mxGeometry x="30" y="60" width="160" height="60" as="geometry" />
           </mxCell>
