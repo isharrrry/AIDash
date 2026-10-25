@@ -120,7 +120,17 @@ export function mcpRouter(ctx: AppContext, log: Logger): Router {
       // 首次 channel.upsert / card.post 自动建通道时，执行前还查不到 id。
       // 用 0ms 定时器在工具已进入执行、通道已创建后补记一次；不阻塞响应，
       // 也不影响 card.ask 这种会等待用户决策的长请求。
-      setTimeout(() => touchChannelsForRequest(ctx, req.body, log), 0);
+      setTimeout(() => {
+        // 测试/关机会在请求返回后立刻 close 数据库；这个 0ms 补记不能再碰库。
+        if (!ctx.db.open) return;
+        try {
+          touchChannelsForRequest(ctx, req.body, log);
+        } catch (error) {
+          log.warn('mcp_activity_touch_failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }, 0);
       await handling;
     }),
   );
