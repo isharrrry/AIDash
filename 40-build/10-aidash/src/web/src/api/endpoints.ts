@@ -34,6 +34,7 @@ import type {
   SettingsPatchView,
   SettingsView,
   TaskClaimResponse,
+  TaskKind,
   TaskView,
   TreeNode,
 } from '../types';
@@ -204,6 +205,8 @@ export interface TaskCreateBody {
   title: string;
   description_md?: string | null;
   parent_id?: string | null;
+  /** 任务类型；讨论任务默认用于拆解问题，普通任务省略按服务端默认 task。 */
+  kind?: TaskKind;
   /** 单值分类；留空表示未分类。 */
   category?: string | null;
   priority?: Priority;

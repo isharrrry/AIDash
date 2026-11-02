@@ -55,7 +55,11 @@ export class HeartbeatLoop {
   }
 
   setBusy(value: boolean): void {
+    if (this.busy === value) return;
     this.busy = value;
+    // 状态切换立即补一拍：固定间隔最长 60 秒，若只靠下一次定时心跳，
+    // 开始/结束任务后的注册表状态会滞后一整拍。401 之后不再发任何请求。
+    if (!this.stopped && !this.authFailed) void this.tick();
   }
 
   async stop(graceful: boolean): Promise<void> {

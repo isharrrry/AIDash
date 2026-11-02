@@ -81,7 +81,9 @@ export function registerTaskTools({ server, ctx, mcpCtx, log }: ToolDeps): void 
         '创建任务。默认是 draft；提交（submit=true）后才可被 claim。' +
         '没有自动派发，执行方必须主动认领。' +
         'kind=suggestion 表示“建议”：保持 draft（挂起）等用户批准，不要再另发通知卡；' +
-        '用户批准后再 submit → claim → start。',
+        '用户批准后再 submit → claim → start。' +
+        'kind=discussion 表示“讨论任务”：默认同样是 draft，执行重点是读父链上下文并用大白话回答，' +
+        '不是改代码；complete 时通过 task.update 的 answer_md 提交结论。',
       inputSchema: { ...taskCreateSchema.shape, submit: z.boolean().optional() },
     },
     async (args) =>
@@ -108,13 +110,32 @@ export function registerTaskTools({ server, ctx, mcpCtx, log }: ToolDeps): void 
         '暂时不继续做、又还没被认领的任务用 defer 并写清原因，不要留在 pending 装成“等人接”。' +
         'flag_risk/unflag_risk 是“隐患”覆盖层：带隐患完成/推进时用 flag_risk 并写清风险（reason 必填），' +
         '可作用于任何状态且不需要 claim_token；unflag_risk 只表示风险已处理，保留原记录供复盘。' +
-        'task.list 可用 has_risk（含已解除）/ risk_open（仅未解除）筛选。',
+        'task.list 可用 has_risk（含已解除）/ risk_open（仅未解除）筛选。' +
+        '讨论任务（kind=discussion）complete 时用 answer_md 提交大白话结论，写入 discussion_answer_md；' +
+        'answer_md 只允许“讨论任务 + complete”组合，空串视为未提供，其他任务/事件传它会被拒绝。',
       inputSchema: taskUpdateSchema.shape,
     },
     async (args) =>
       runTool('task.update', log, () => {
         const input = taskUpdateSchema.parse(args);
         return ctx.services.tasks.update(input, mcpCtx);
+      }),
+  );
+
+  server.registerTool(
+    'task.get',
+    {
+      title: '取任务详情',
+      description:
+        '按 id 取单个任务，返回完整字段与父链 ancestors（根 → 直接父，depth=1 是直接父）。' +
+        '讨论类子任务应先读父链里的 description_md / discussion_answer_md，再决定怎么回答；' +
+        '列表与任务树不附带父链，避免批量查询变成 N+1。',
+      inputSchema: { task_id: idSchema },
+    },
+    async (args) =>
+      runTool('task.get', log, () => {
+        const input = z.object({ task_id: idSchema }).parse(args);
+        return ctx.services.tasks.get(input.task_id);
       }),
   );
 
@@ -127,7 +148,8 @@ export function registerTaskTools({ server, ctx, mcpCtx, log }: ToolDeps): void 
         '要查历史时显式传 status=done|cancelled 或 include_closed=true。' +
         '传 has_risk/risk_open 且未显式传 status 时自动包含终态——带隐患完成的任务大多已经 done/cancelled，' +
         '否则复盘筛选会漏掉最主要的一类记录。' +
-        '默认不返回 description_md（可能含 base64 截图），需要正文时传 include_description=true。',
+        '默认不返回 description_md / discussion_answer_md（可能含 base64 截图），' +
+        '需要正文时传 include_description=true，或按 id 用 task.get 取详情。',
       inputSchema: mcpTaskListShape,
     },
     async (args) =>

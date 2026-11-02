@@ -24,7 +24,17 @@ import {
  *   第 d 层的父连线 = 第 d-1 层按钮中心 = d*16 - 1
  */
 
-const CSS = readFileSync(new URL('../src/web/src/styles.css', import.meta.url), 'utf8');
+/**
+ * 先归一换行再匹配。
+ *
+ * 仓库按 LF 存储，但 Windows + core.autocrlf 会把工作区检出成 CRLF；
+ * 测试里的多行选择器字符串写的是 `\n`，不归一会因为 `\r\n` 匹配不到规则，
+ * 看起来像“样式被删了”，实际只是检出行尾差异。
+ */
+const CSS = readFileSync(new URL('../src/web/src/styles.css', import.meta.url), 'utf8').replace(
+  /\r\n?/g,
+  '\n',
+);
 
 /** 取出某条规则的大括号内容；规则体内不会嵌套 }，所以不必做括号配对。 */
 function ruleBody(css: string, selector: string): string {

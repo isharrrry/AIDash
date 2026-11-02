@@ -168,6 +168,20 @@ export class ChannelService {
     };
   }
 
+  /**
+   * 单条通道视图。
+   *
+   * list() 的聚合查询已经带回 active_task_count；这里补一次计数，让
+   * setStatus/setAlias 返回的 agent_online/agent_busy 与列表口径一致。
+   */
+  private viewOf(channel: Channel, now: number): ChannelView {
+    return toChannelView(
+      { ...channel, active_task_count: this.channels.countActiveTasks(channel.id) },
+      now,
+      this.offlineThresholdMs,
+    );
+  }
+
   setStatus(key: string, status: ChannelStatus, ctx: Ctx): ChannelView {
     const channel = this.getByKeyOrThrow(key);
     const now = this.clock.now();
@@ -180,7 +194,7 @@ export class ChannelService {
       channel.id,
       { channel_key: channel.channel_key },
     );
-    return toChannelView(this.channels.get(channel.id)!, now, this.offlineThresholdMs);
+    return this.viewOf(this.channels.get(channel.id)!, now);
   }
 
   /**
@@ -200,7 +214,7 @@ export class ChannelService {
         channel_key: channel.channel_key,
       });
     }
-    return toChannelView(this.channels.get(channel.id)!, now, this.offlineThresholdMs);
+    return this.viewOf(this.channels.get(channel.id)!, now);
   }
 
 }
@@ -223,6 +237,7 @@ export function toChannelView(
     card_count?: number;
     task_count?: number;
     open_task_count?: number;
+    active_task_count?: number;
     last_active_at?: number | null;
   },
   now: number = Date.now(),
@@ -230,7 +245,12 @@ export function toChannelView(
 ): ChannelView {
   // 未来时间按“离线”处理：系统时钟回拨时，若只判断差值，通道会永久显示在线。
   const mcpAt = row.last_mcp_at ?? null;
-  const isAgentOnline = mcpAt !== null && mcpAt <= now && now - mcpAt <= offlineThresholdMs;
+  const isMcpFresh = mcpAt !== null && mcpAt <= now && now - mcpAt <= offlineThresholdMs;
+  // 有 in_progress 任务 = runner 正在这条通道里干活。长任务期间 MCP 调用可能
+  // 只有开始/续租/结束三拍，间隔超过离线阈值；不把任务状态算进来，正在执行
+  // 的通道会显示成“已停止”。pending/claimed 不算：活儿还没真正开始。
+  const isAgentBusy = (row.active_task_count ?? 0) > 0;
+  const isAgentOnline = isAgentBusy || isMcpFresh;
   return {
     id: row.id,
     channel_key: row.channel_key,
@@ -248,6 +268,7 @@ export function toChannelView(
     open_task_count: row.open_task_count ?? 0,
     last_mcp_at: mcpAt === null ? null : new Date(mcpAt).toISOString(),
     agent_online: isAgentOnline,
+    agent_busy: isAgentBusy,
     last_active_at:
       row.last_active_at === null || row.last_active_at === undefined
         ? null

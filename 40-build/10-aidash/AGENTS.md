@@ -41,12 +41,12 @@ curl -s "$AIDASH_URL/mcp" \
 
 ---
 
-## 2. 工具清单（MCP-001~023）
+## 2. 工具清单（MCP-001~024）
 
 | ID | 工具 | 用途 | 关键参数 |
 |---|---|---|---|
 | MCP-001 | `harness.register` | 注册/更新自己 | `harness_id`、`name`、`capabilities` |
-| MCP-002 | `harness.heartbeat` | 心跳 | `harness_id`、`status_hint` |
+| MCP-002 | `harness.heartbeat` | 心跳；`status_hint` 决定注册表显示“运行中”还是“空闲在线” | `harness_id`、`status_hint` |
 | MCP-003 | `channel.upsert` | 建/更新通道 | `channel_key`、`title`、`workdir` |
 | MCP-004 | `card.post` | 发卡（六类型） | `channel_key`、`type`、`task_id`（非 `question` 必填）、类型必填字段 |
 | MCP-005 | `card.ask` | 发决策卡并有界等待（MCP 侧最多等 25 秒，超时返回 `pending`） | `channel_key`、`title`、`background_md`、`goal_md`、`research_md`、`decision_md`、`options`、`wait_seconds` |
@@ -68,12 +68,13 @@ curl -s "$AIDASH_URL/mcp" \
 | MCP-021 | `memory.append` | 追加记忆行（默认去重） | `project`、`lines`、`dedupe` |
 | MCP-022 | `memory.search` | 按 key 搜记忆行 | `project`、`query`、`limit` |
 | MCP-023 | `memory.update` | 整体编辑记忆 | `project`、`content_md`、`expected_version` |
+| MCP-024 | `task.get` | 读单任务详情（含父链 `ancestors`） | `task_id` |
 
 > 开场建议：先 `digest.get` 了解用户现在关心什么，再 `memory.search` / `memory.get` 读当前主通道的长期约束，最后决定发卡还是认领任务。
 
 **查询默认忽略完成/取消**：`task.list` 与 `task.tree` 默认不返回 `done` / `cancelled`（`failed` 保留，失败不能被藏起来），避免历史任务灌满上下文。要看历史时显式传 `status=done|cancelled`（只对 `task.list` 有效）或 `include_closed=true`。**例外（仅 `task.list`）**：传 `has_risk=true` 或 `risk_open=true` 且未显式传 `status` 时自动包含终态——带隐患完成的任务大多已经 `done`/`cancelled`，否则复盘筛选会漏掉主要对象；显式 `status` 仍然优先。`task.tree` 过滤时会把已结束父节点下的未结束子代提升一级，不会连带藏掉仍在进行的子任务。
 
-**查询默认省略描述**：`task.list` 与 `task.tree` 默认返回 `description_md: null`，因为描述里可能内嵌 base64 截图；需要正文时显式传 `include_description=true`。任务详情（REST `GET /api/tasks/{id}`）与写操作回执仍返回完整描述。
+**查询默认省略描述**：`task.list` 与 `task.tree` 默认返回 `description_md: null`，因为描述里可能内嵌 base64 截图；需要正文时显式传 `include_description=true`。任务详情（REST `GET /api/tasks/{id}`、MCP `task.get`）与写操作回执仍返回完整描述。`discussion_answer_md` 同理：列表/树默认不返回结论全文，详情与 `task.get` 才返回。
 
 **查询默认省略卡片正文**：`card.list` 默认把 `body_md` / `background_md` / `goal_md` / `research_md` / `decision_md` / `message_md` 返回为 `null`，改为给出 `preview_md`——从 `body_md` → `background_md` → `goal_md` 取第一个非空值，截断约 240 字符，保留 Markdown 原文。需要完整正文时显式传 `include_body=true`（按 `task_id` 读任务信息流也一样）；单卡详情（REST `GET /api/cards/{id}`、`card.get`）始终完整，不受此开关影响。
 
@@ -438,6 +439,21 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 - 为什么不用 `blocked`：`blocked → unblock` 必须带 `claim_token`，而令牌只存在于认领方的会话里、活不过会话；用 `draft` 才能让用户在网页上直接推进。
 - `description_md` 写清楚“建议做什么、为什么、代价与风险”，让用户不打开对话也能判断。
 
+**讨论任务（`kind="discussion"`）以回答为主**：
+
+```text
+task.create(kind="discussion", submit=true)
+  → task.claim → task.update(event="start")
+  → 读取父链上下文，用大白话回答问题
+  → 发 status/讨论结论证据卡
+  → task.update(event="complete", answer_md="完整回答")
+```
+
+- 讨论任务的产出是**回答**，不是代码改动或命令输出。回答要结论先行、大白话，不要堆过程日志。
+- `answer_md` 只在 `complete` 且任务 `kind="discussion"` 时被接受；服务端写入 `discussion_answer_md` / `discussion_answered_at`，其他类型传 `answer_md` 会返回 `INVALID_ARGUMENT`。
+- 讨论可以分层拆成多个子讨论（Web 任务详情页支持批量创建，默认 `kind="discussion"`、默认提交为 `pending`）。`task.claim`、REST `GET /api/tasks/{id}` 与 MCP `task.get` 会返回 `ancestors`（根 → 直接父的顺序，含每层 `title/kind/status/description_md/discussion_answer_md`，直接父的 `depth=1`）。执行任何一层讨论前都要先读父链，不要忘记上文，也不要重复问已经回答过的问题。
+- `task.list` / `task.tree` 不返回 `ancestors`，需要上下文时用 `task.get` 或认领响应。
+
 **执行中的任务不能留在 `pending`**：agent 自己在做、或已经交给子代理的任务，必须在同一轮里完成 `claim → start`。`pending` 的含义是“等着别人认领”；一边做一边让它显示“要认领”，用户会以为没人接。
 
 - 主 agent 把活交给子代理时：要么先 `claim` 再转交并保留 `claim_token`，要么要求子代理启动后的第一件事就是 `claim → start`。
@@ -676,3 +692,4 @@ task.create(kind="suggestion")   # 不传 submit，停在 draft（挂起，等�
 | 4.16 | 2026-10-25 | 非破坏性：局域网访问与口令登录——`AIDASH_HOST` / 启动脚本 `-BindHost` 可改绑定地址（默认仍 127.0.0.1，非回环启动时 WARN）；新增可选 `AIDASH_PASSPHRASE`（≥8 字符，只从环境变量读，默认不启用），与 `AIDASH_TOKEN` 任一 Bearer 均可认证，Web 登录页接受“令牌或口令”，口令不回显、不写日志/卡片 |
 | 4.17 | 2026-10-25 | 非破坏性：口令改为推荐的默认登录方式——服务端允许仅设 `AIDASH_PASSPHRASE` 启动（令牌变为可选，二者至少一个）；设置页显示口令是否启用；`start-aidash.ps1` 接受只配口令；runner 凭据顺序增加 `AIDASH_PASSPHRASE` 兜底；主 README 补 server + runner 最短接入。安全底线不变：口令≥8、仅环境变量、局域网必须 TLS |
 | 4.18 | 2026-10-25 | 非破坏性：凭据统一为 `AIDASH_TOKEN`——它可以直接填短口令（建议≥8），不再要求单独的 `AIDASH_PASSPHRASE`；后者降为弃用别名，仅兼容旧配置，新文档与设置页只出现 `AIDASH_TOKEN` |
+| 4.19 | 2026-10-26 | 非破坏性：新增讨论任务 `kind="discussion"`（迁移 018 增加 `discussion_answer_md` / `discussion_answered_at`）；`complete` 可带 `answer_md` 写入讨论结论；新增 MCP `task.get`，认领/详情返回父链 `ancestors`（根→父、含上级结论、文本截断）；Web 任务详情展示讨论结论/父链上下文并支持批量拆分子讨论（默认 `kind="discussion"`、默认待认领）；任务树“全部通道”不再空白；设置/运维页拆分为 7 个页内分区并修复数据库路径重复与窄列竖排；迁移 checksum 按 LF 归一，修复 Windows CRLF 检出导致部署启动 `MIGRATION_CHECKSUM_MISMATCH` |

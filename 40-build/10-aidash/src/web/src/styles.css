@@ -33,9 +33,11 @@
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   --topbar-height: 52px;
-  /* 页面级任务详情卡的宽度：列表留白和卡片宽度共用同一个值，
-     两边分别写死会在响应式断点处对不齐。 */
+  /* 任务详情卡的窄侧边宽度；宽侧边按钮会临时覆盖为视口的 70%。 */
   --task-detail-width: 520px;
+  /* 任务树/通道页是宽表格工作区：1440 在 2K 以上的屏幕会留下大片空白，
+     把中间任务表压得很挤；这两页单独放宽到 2200。 */
+  --task-page-max-width: 2200px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -143,6 +145,19 @@ code {
   margin: 0 auto;
   /* 页面边距收一档：任务看板要在一屏里多放几行，20/24 的外围留白太贵。 */
   padding: 14px 18px 24px;
+}
+
+/*
+ * 任务树/通道页放宽内容区。
+ *
+ * 这两页的主体是八列任务表，列宽总和固定，1440 上限在大屏上会让两侧空出
+ * 几百像素，而表格标题列却被挤得只剩几个字。顶栏和页脚一起放宽，保证
+ * 品牌、导航和正文左缘仍然对齐。
+ */
+.app-wide .main,
+.app-wide .topbar-inner,
+.app-wide .app-footer {
+  max-width: var(--task-page-max-width);
 }
 
 .page {
@@ -1026,6 +1041,14 @@ textarea::placeholder {
   background: var(--accent-soft);
 }
 
+/* 讨论任务用绿系：它不是“等你批准”的建议，也不是默认的执行任务，
+   需要在任务树里一眼区分“这条要的是回答”。 */
+.badge.kind-discussion {
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  background: var(--success-soft);
+}
+
 .enrich-pending,
 .enrich-running {
   color: var(--warn);
@@ -1115,9 +1138,25 @@ textarea::placeholder {
   color: var(--muted);
 }
 
-.harness-online {
+/* 在线再分两态：idle 是静态绿点，busy 用转圈表示“正在执行任务”。
+   harness-online 保留给旧服务端/旧快照，视觉与 idle 一致。 */
+.harness-online,
+.harness-idle {
   color: var(--success);
   background: var(--success-soft);
+}
+
+.harness-idle::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.harness-busy {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .harness-offline {
@@ -2168,7 +2207,7 @@ textarea::placeholder {
   color: var(--text);
 }
 
-/* 主对话聚焦时，每条通道一个独立看板；内层 TaskBoard 不再重复画面板边框。 */
+/* 主对话聚焦/全部通道视图：每条通道一个独立看板；内层 TaskBoard 不再重复画面板边框。 */
 .task-project-boards {
   display: flex;
   flex-direction: column;
@@ -2280,18 +2319,17 @@ textarea::placeholder {
  *
  * 为什么不用 grid 的第二列 + sticky：sticky 只在“自己那一列还在视口里”时有效，
  * 树一长、整页一滚，详情就跟着文档走了；用户要的是像决策抽屉那样钉在视口右侧、
- * 只让自己内部滚动。所以详情用 position: fixed 脱离文档流，列表给等宽 padding
- * 留白，保证最后几列不会被卡片盖住。
+ * 只让自己内部滚动。所以详情用 position: fixed 脱离文档流。
+ *
+ * 打开详情时列表不再为它留出等宽 padding：之前那样会让整张表向左缩，
+ * 右侧反而空出一条比详情卡还宽的空白。现在详情直接覆盖在列表上，
+ * 表格保持原位；用户随时可以“收起”，或把详情切成 70% 的宽侧边细看。
  */
 .task-board-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-}
-
-.task-board-grid.detail-open {
-  padding-right: var(--task-detail-width);
 }
 
 .task-tree-wrap {
@@ -2832,6 +2870,106 @@ textarea::placeholder {
   line-height: 1.45;
 }
 
+/* 展开态：正文就在卡片里，提高对比度，让“当前正在读哪条”一眼可见。 */
+.task-feed-item.expanded {
+  opacity: 1;
+  border-color: var(--border-strong);
+}
+
+/* 展开箭头：收起时指向右，展开时转成向下。 */
+.task-feed-caret {
+  display: inline-block;
+  width: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.task-feed-caret.open {
+  transform: rotate(90deg);
+}
+
+.task-feed-detail {
+  padding: 0 11px 10px;
+  border-top: 1px solid var(--border);
+}
+
+/*
+  内联卡片详情：标题已经在 Expander 头部显示，正文里不再重复一遍；
+  徽标、元信息与按类型切换的正文仍保留，保证展开区自己可读。
+*/
+.card-inline-detail .drawer-title {
+  display: none;
+}
+
+.card-inline-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+/* ---------------------- 完成证据的内联展开器 ---------------------- */
+
+.card-expander-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-expander {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.card-expander.open {
+  border-color: var(--border-strong);
+}
+
+.card-expander-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-expander-head:hover {
+  background: var(--surface-2);
+}
+
+.card-expander-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card-expander-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-expander-body {
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--border);
+}
+
 .task-detail {
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -2858,6 +2996,17 @@ textarea::placeholder {
   box-shadow: var(--shadow-lg);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/*
+ * 宽侧边：占视口约 70%，用来读长描述、信息流和时间线。
+ *
+ * 用 70% 而不是 70vw：fixed 定位的包含块（ICB）不含纵向滚动条宽度，
+ * vw 会把滚动条也算进去，右缘在部分浏览器里会被裁掉或触发横向滚动。
+ */
+.task-detail.task-detail-dock.detail-wide {
+  width: 70%;
+  max-width: 100%;
 }
 
 /*
@@ -2914,8 +3063,9 @@ kbd {
     --task-detail-width: 100%;
   }
 
-  .task-board-grid.detail-open {
-    padding-right: 0;
+  /* 小屏下“宽侧边”没有意义：70% 也会把任务表压到没法看，统一占满视口。 */
+  .task-detail.task-detail-dock.detail-wide {
+    width: 100%;
   }
 }
 
@@ -2944,6 +3094,90 @@ kbd {
 
 .task-detail-dock > section > .panel-header {
   margin-bottom: 0;
+}
+
+/* ---------- 讨论任务 ---------- */
+
+/*
+ * 讨论结论用左侧色条 + 浅色底突出，但不再包一层卡片边框：
+ * 详情里已经有多个 section，再加框会让层级视觉噪音过重。
+ */
+.task-discussion-answer {
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.task-discussion-answer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-discussion-answer-head h4 {
+  margin: 0;
+  color: var(--accent-strong);
+}
+
+/* 父链用虚线框：它是“上下文”，不是本任务自己的结论，视觉权重低于正文。 */
+.task-ancestors {
+  padding: 8px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.task-ancestor-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.task-ancestor-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.task-ancestor-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-ancestor-detail summary {
+  padding: 2px 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.task-ancestor-detail .markdown {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.task-ancestor-answer {
+  margin-top: 4px;
+  padding-left: 9px;
+  border-left: 2px solid var(--accent);
+}
+
+.task-ancestor-answer h5 {
+  margin: 2px 0 4px;
+  font-size: 11.5px;
+  color: var(--accent-strong);
+}
+
+/* 批量拆分：默认是详情底部的主操作，输入区保持紧凑。 */
+.task-discussion-children textarea {
+  width: 100%;
+  min-height: 76px;
 }
 
 .create-task {
@@ -3040,10 +3274,77 @@ kbd {
 
 /* ---------- 设置 / 审计 ---------- */
 
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.settings-tab[aria-selected='true'] {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.settings-tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 17px;
+  text-align: center;
+}
+
+.settings-tab[aria-selected='true'] .settings-tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.settings-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 作者样式里的 display:flex 会盖掉浏览器对 [hidden] 的默认 display:none。 */
+.settings-tabpanel[hidden] {
+  display: none;
+}
+
 .health-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
+  /* 长值只影响自己那一格的高度，不再把同排其它指标拉成大片空白。 */
+  align-items: start;
 }
 
 .metric {
@@ -3058,14 +3359,18 @@ kbd {
 
 .metric strong {
   font-size: 14px;
-  /* 数据库路径可能很长；允许任意位置换行，避免撑破健康卡片网格。 */
-  overflow-wrap: anywhere;
+}
+
+.settings-overview-note {
+  margin: 10px 0 0;
 }
 
 .settings-sections {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* 1440px 下两列能给每组足够宽度；auto-fit 260px 会排成四个窄列把值压成竖排。 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .settings-group {
@@ -3082,10 +3387,11 @@ kbd {
 
 .settings-group dl {
   display: grid;
-  grid-template-columns: minmax(76px, auto) 1fr;
-  gap: 4px 10px;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  gap: 5px 12px;
   margin: 0;
   font-size: 12px;
+  align-items: baseline;
 }
 
 .settings-group dt {
@@ -3094,11 +3400,25 @@ kbd {
 
 .settings-group dd {
   margin: 0;
+  min-width: 0;
+  /* 普通短值按正常词边界换行；只有下面显式标记的路径才允许任意断行。 */
+  overflow-wrap: break-word;
+}
+
+.settings-group dd.settings-value-path {
+  font-family: var(--mono);
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .settings-group p {
-  margin-top: 8px;
+  margin: 8px 0 0;
+}
+
+@media (max-width: 900px) {
+  .settings-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .table-wrap {
@@ -3876,39 +4196,72 @@ mark {
 .prompt-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
 
 .prompt-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.prompt-item[open] {
+  background: var(--surface);
+}
+
+.prompt-item-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+/* 收起浏览器自带的三角，用可旋转的 caret 保持展开状态一眼可见。 */
+.prompt-item-summary::-webkit-details-marker {
+  display: none;
+}
+
+.prompt-item-caret {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.prompt-item[open] .prompt-item-caret {
+  transform: rotate(90deg);
+}
+
+.prompt-item-summary strong {
+  font-size: 13px;
+}
+
+.prompt-item-count {
+  margin-left: auto;
+}
+
+.prompt-item-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-top: 14px;
+  gap: 8px;
+  padding: 10px 12px 12px;
   border-top: 1px solid var(--border);
 }
 
-.prompt-item:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.prompt-item-header {
+.prompt-item-toolbar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.prompt-item-header h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.prompt-item-toolbar p {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  font-size: 14px;
-}
-
-.prompt-item-header p {
-  margin: 2px 0 0;
 }
 
 .prompt-editor {

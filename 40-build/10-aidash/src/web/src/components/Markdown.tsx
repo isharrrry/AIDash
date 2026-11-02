@@ -6,7 +6,7 @@
  * 或 `javascript:` 链接就能直接执行脚本。本渲染器把 Markdown 解析成 React 节点，
  * 文本始终作为 text node 交给 React 转义；链接只放行 http/https。
  * 支持范围：标题、段落、无序/有序列表、围栏代码块、行内代码、加粗、==高亮==、链接、
- * 引用，以及任务描述里粘贴生成的 base64 图片。
+ * 引用、行尾双空格的硬换行，以及任务描述里粘贴生成的 base64 图片。
  */
 import { createElement, Fragment } from 'react';
 import type { ReactElement, ReactNode } from 'react';
@@ -27,8 +27,11 @@ const OL_RE = /^\d+[.)]\s+(.*)$/;
 const FENCE_RE = /^```([A-Za-z0-9_+-]*)\s*$/;
 // 分隔线必须是整行；`---` 单独出现时是 <hr>，出现在表格第二行时由表格解析先截走。
 const HR_RE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
-// GFM 表格分隔行：允许首尾竖线省略，每列至少三个短横线，可带对齐冒号。
-const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+// GFM 表格分隔行：允许首尾竖线省略，每列至少一个短横线，可带对齐冒号。
+// 规范要求每列三个短横线，但 harness 汇报普遍写 `| :-- | :-- |`（两个）甚至 `|:-:|`（一个）；
+// 只认三个会把整张表退化成一段带竖线的文字，用户看到的就是“没有表格、行也不换行”。
+// 放宽后误判风险由另外三重条件挡住：上一行必须含竖线、必须有列分隔竖线、列数要与表头一致。
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$/;
 const SAFE_LINK_RE = /^https?:\/\//i;
 // 图片只放行 http(s) 与常见位图的 base64。不放行 svg：SVG 可以带脚本，
 // 虽然 <img> 上下文通常不执行，但没有必要为这种边角需求扩大攻击面。
@@ -206,6 +209,22 @@ function renderInline(text: string): ReactNode[] {
   };
 
   while (index < text.length) {
+    // GFM 硬换行：行尾两个以上空格表示强制换行。汇报开头的“日期 / 范围 / 基线”三行
+    // 就是这种写法；不处理的话 HTML 会把换行折叠成空格，整段挤成一行。
+    // 单个换行不动：GFM 语义里它仍是同一段，交给浏览器按空格折叠。
+    if (text[index] === '\n') {
+      // 只在本轮尚未输出的范围内回溯空格，避免吃到前面已经处理过的内容。
+      let trailing = index;
+      while (trailing > plainStart && text[trailing - 1] === ' ') trailing -= 1;
+      if (index - trailing >= 2) {
+        flush(trailing);
+        nodes.push(<br key={`br-${key++}`} />);
+        index += 1;
+        plainStart = index;
+        continue;
+      }
+    }
+
     // 行内代码优先级最高：里面的 ** 和 [] 都按字面量处理。
     if (text[index] === '`') {
       const end = text.indexOf('`', index + 1);

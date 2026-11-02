@@ -481,6 +481,8 @@ export class FakeAidash {
         }
         task.status = 'done';
         task.claim_token = null;
+        // 模拟服务端：讨论结论随 complete 落库，后续 task.get/claim 能读到。
+        if (typeof args.answer_md === 'string') task.discussion_answer_md = args.answer_md;
         break;
       case 'fail':
         task.status = 'failed';
@@ -543,10 +545,16 @@ export class FakeAidash {
       tags: [...(task.tags ?? [])],
       assignee: task.assignee ?? null,
       kind: task.kind ?? 'task',
+      parent_id: task.parent_id ?? null,
       due_at: task.due_at ?? null,
       defer_reason: task.defer_reason ?? '',
       deferred_until: task.deferred_until ?? null,
       description_md: includeDescription ? task.description_md ?? null : null,
+      discussion_answer_md: task.discussion_answer_md ?? null,
+      // 真实服务端只在 claim/task.get 带祖先；这里按任务数据有无透传即可。
+      ...(Array.isArray(task.ancestors)
+        ? { ancestors: task.ancestors.map((ancestor) => ({ ...ancestor })) }
+        : {}),
       claim_expires_at: task.claim_expires_at ?? null,
       created_at: task.created_at ?? null,
       updated_at: task.updated_at ?? null,

@@ -150,7 +150,7 @@ function buildPresetRule(preset, cwdFlag) {
         'claude',
         '--dangerously-skip-permissions',
         '-p',
-        'Read and execute the task file: {task_file}. When finished, write claude-result.json with fields summary, detail_md, result.',
+        'Read and execute the task file: {task_file}. When finished, write the result JSON to {result_file} with fields summary, detail_md, result, task_id; task_id must equal the id in the task file.',
       ],
       cwd: cwdFlag ? resolvePath(cwdFlag, process.cwd()) : '.',
       input: 'file',
@@ -158,7 +158,9 @@ function buildPresetRule(preset, cwdFlag) {
       timeout_seconds: DEFAULT_COMMAND_TIMEOUT_SECONDS,
       env: {},
       env_passthrough: [],
-      result_file: 'claude-result.json',
+      // 按执行隔离：每次任务都有自己的临时目录，避免多个任务/实例共用
+      // claude-result.json 时把别人的结果当成本次证据。
+      result_file: '{task_file_dir}/claude-result.json',
       shell: false,
     },
   };

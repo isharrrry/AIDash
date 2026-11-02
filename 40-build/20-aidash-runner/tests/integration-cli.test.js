@@ -132,7 +132,8 @@ test('init --preset claude 生成跨平台 argv 规则，不经过 shell', async
   assert.equal(rule.run.argv[0], 'claude');
   assert.equal(rule.run.argv[1], '--dangerously-skip-permissions');
   assert.match(rule.run.argv[3], /\{task_file\}/);
-  assert.equal(rule.run.result_file, 'claude-result.json');
+  assert.match(rule.run.argv[3], /\{result_file\}/);
+  assert.equal(rule.run.result_file, '{task_file_dir}/claude-result.json');
   assert.equal(rule.run.cwd, path.resolve(cwd));
 
   const unknown = await runCli(['init', '--preset', 'nope', '--force', '--json'], opts);

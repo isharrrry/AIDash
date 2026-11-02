@@ -1,5 +1,12 @@
 import { AppError } from '../../shared/errors.js';
-import type { Page, Task, TaskStatus, TaskView, TreeNode } from '../../shared/types.js';
+import type {
+  Page,
+  Task,
+  TaskAncestorView,
+  TaskStatus,
+  TaskView,
+  TreeNode,
+} from '../../shared/types.js';
 import type { CardRepo } from '../repos/card-repo.js';
 import type { TaskRepo } from '../repos/task-repo.js';
 import { toTaskView } from '../repos/task-repo.js';
@@ -38,8 +45,54 @@ export function taskToView(
   return toTaskView(task, key, includeDescription, count);
 }
 
+/**
+ * 祖先文本字段的最大长度。
+ *
+ * 描述与讨论结论都可能内嵌 base64 截图；父链会随认领响应进入 runner 的提示词，
+ * 如果原样下发，一条历史任务就能把上下文预算吃光。截断只在投影层做，
+ * 数据库仍保留完整正文，详情页按 id 读取时不会丢内容。
+ */
+export const TASK_ANCESTOR_TEXT_LIMIT = 6_000;
+
+function truncateAncestorText(value: string | null): string | null {
+  if (value === null) return null;
+  return value.length > TASK_ANCESTOR_TEXT_LIMIT
+    ? value.slice(0, TASK_ANCESTOR_TEXT_LIMIT)
+    : value;
+}
+
+/**
+ * 从物化路径解析父链，返回根 → 直接父的顺序。
+ *
+ * 为什么不用递归 CTE：path 已经编码了完整层级，逐段 tasks.get 就能按顺序取到；
+ * 递归查询反而要在 SQL 里再做一次同样的字符串拆分，还多一层查询计划。
+ * depth 按“离当前任务几层”计算，直接父任务恒为 1。
+ */
+export function taskAncestors(tasks: TaskRepo, task: Task): TaskAncestorView[] {
+  // 路径形如 /root/child/current/；最后一段是任务自己，其余按从根到父排列。
+  const ids = task.path.split('/').filter(Boolean).slice(0, -1);
+  const ancestors: TaskAncestorView[] = [];
+  ids.forEach((id, index) => {
+    const ancestor = tasks.get(id);
+    // 路径与任务行理论上一致；个别行缺失时跳过，而不是让整个详情/认领失败。
+    if (!ancestor) return;
+    ancestors.push({
+      id: ancestor.id,
+      title: ancestor.title,
+      kind: ancestor.kind,
+      status: ancestor.status,
+      depth: ids.length - index,
+      description_md: truncateAncestorText(ancestor.description_md),
+      discussion_answer_md: truncateAncestorText(ancestor.discussion_answer_md),
+    });
+  });
+  return ancestors;
+}
+
 export function getTaskView(deps: TaskQueryDeps, id: string): TaskView {
-  return taskToView(deps, requireTask(deps.tasks, id));
+  const task = requireTask(deps.tasks, id);
+  // 只有单任务详情带父链：列表/树若逐节点回溯会变成 N+1，且批量响应会被祖先正文撑大。
+  return { ...taskToView(deps, task), ancestors: taskAncestors(deps.tasks, task) };
 }
 
 export interface TaskListFilter {

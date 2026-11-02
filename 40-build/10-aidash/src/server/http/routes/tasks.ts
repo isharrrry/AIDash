@@ -72,8 +72,8 @@ export function tasksRouter(ctx: AppContext): Router {
             page: queryInt(req.query.page, 1, 1, 1_000_000),
             page_size: queryInt(req.query.page_size, 50, 1, ctx.config.pageSizeMax),
           },
-          // 默认不带 description_md：描述可能内嵌 base64 截图，批量列表不该背这个体积。
-          // 需要正文的调用方显式传 include_description=true，或按 id 取详情。
+          // 默认不带 description_md / discussion_answer_md：两者都可能内嵌 base64 截图，
+          // 批量列表不该背这个体积。需要正文的调用方显式传 include_description=true，或按 id 取详情。
           queryBool(req.query.include_description),
         ),
       );

@@ -370,9 +370,10 @@ export const taskCreateSchema = z.object({
   // 任务描述允许内嵌 base64 截图，上限单独定义并与 Web 编辑器共用。
   description_md: z.string().max(MAX_TASK_DESCRIPTION_CHARS).optional().nullable(),
   parent_id: z.string().max(64).optional().nullable(),
-  // 类型在入口处收窄：存储层只有 'task' 与 'suggestion' 两种；
+  // 类型在入口处收窄：存储层只有 task / suggestion / discussion 三种；
   // 默认值放在 schema 而不是 service，保证 REST 与 MCP 两条入口行为一致。
-  kind: z.enum(['task', 'suggestion']).optional().default('task'),
+  // discussion 默认仍是 draft；是否提交由调用方的 submit 决定。
+  kind: z.enum(['task', 'suggestion', 'discussion']).optional().default('task'),
   // 单值分类：任务树按列展示，不能像 tags 一样并排多个。
   category: z.string().max(40).optional().nullable(),
   priority: prioritySchema.optional().default('P2'),
@@ -399,6 +400,14 @@ export const taskUpdateSchema = z.object({
   claim_token: z.string().max(128).optional(),
   patch: taskPatchSchema.optional(),
   reason: z.string().max(4000).optional(),
+  /**
+   * 讨论任务的结论（Markdown）。
+   *
+   * 只允许在 complete 事件里、且任务 kind=discussion 时落库；其他组合服务端会拒绝，
+   * 避免普通任务的“完成理由”被塞进讨论结论字段后混进父链上下文。
+   * 长度与任务描述共用上限：结论可能包含截图之外的表格/代码片段。
+   */
+  answer_md: z.string().max(MAX_TASK_DESCRIPTION_CHARS).optional(),
   /**
    * defer 事件专用：计划什么时候恢复。
    *

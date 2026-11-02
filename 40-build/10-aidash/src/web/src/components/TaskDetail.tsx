@@ -5,7 +5,6 @@ import { describeError } from '../api/client';
 import { copyTask, getTask, moveTask, updateTask } from '../api/endpoints';
 import { useAsync } from '../hooks/useAsync';
 import { formatAbsolute, formatRelative, fromLocalInput, parseTagInput, shortId, toLocalInput } from '../lib/format';
-import { openCard } from '../lib/router';
 import { buildParentOptions, isSelfOrDescendant } from '../lib/task-tree';
 import { EVENT_LABELS, REASON_EVENTS, eventNeedsToken } from '../lib/task-events';
 import type { TaskEvent } from '../lib/task-events';
@@ -16,8 +15,14 @@ import {
   TaskRiskBadge,
   TaskStatusBadge,
 } from './Badge';
+import { CardExpander } from './CardExpander';
 import { ErrorBox, Loading } from './Feedback';
 import { Markdown } from './Markdown';
+import {
+  TaskAncestors,
+  TaskDiscussionAnswer,
+  TaskDiscussionChildren,
+} from './TaskDiscussionPanel';
 import { TaskDetailEditor } from './TaskDetailEditor';
 import { TaskDetailEvents } from './TaskDetailEvents';
 import { TaskDetailMoveCopy } from './TaskDetailMoveCopy';
@@ -47,9 +52,11 @@ export function TaskDetail({
   total,
   onClose,
   onUnreadChange,
+  wide = false,
+  onToggleWide,
 }: {
   taskId: string;
-  /** 当前通道的全部任务（扁平树序），用于“新父任务”下拉选项。 */
+  /** 当前范围的全部任务（扁平树序）；父任务下拉会进一步按 channel_id 过滤。 */
   tasks: TaskView[];
   claimToken: string | null;
   /** 父组件认领/释放后递增，用来强制拉取最新任务状态。 */
@@ -66,6 +73,10 @@ export function TaskDetail({
   onClose: () => void;
   /** 信息流逐条已读后通知任务树更新红点，不必整树重拉。 */
   onUnreadChange?: (taskId: string, unreadCount: number) => void;
+  /** 宽侧边（约 70% 视口）；不传按窄侧边渲染，兼容旧调用方。 */
+  wide?: boolean;
+  /** 一键切换窄/宽侧边；由 TaskBoard 持有状态，翻任务时不丢失。 */
+  onToggleWide?: () => void;
 }): ReactElement {
   const notify = useToast().notify;
   const editSectionRef = useRef<HTMLElement | null>(null);
@@ -104,9 +115,20 @@ export function TaskDetail({
    * 也看不出目标在当前树的哪一层。选项里排除自身与后代，
    * 因为服务端会对这两个位置返回 TASK_CYCLE。
    */
-  const parentOptions = useMemo(
-    () => (data ? buildParentOptions(tasks, data.id) : []),
+  const sameChannelTasks = useMemo(
+    () =>
+      data ? tasks.filter((task) => task.channel_id === data.channel_id) : [],
     [tasks, data],
+  );
+  /**
+   * 父任务只能在同通道内选择。
+   *
+   * `tasks` 是调用方传入的当前树；即便上游将来传入跨通道任务，这里也按
+   * channel_id 再过滤一次，避免下拉给出服务端必然拒绝的跨通道选项。
+   */
+  const parentOptions = useMemo(
+    () => (data ? buildParentOptions(sameChannelTasks, data.id) : []),
+    [sameChannelTasks, data],
   );
 
   useEffect(() => {
@@ -223,7 +245,8 @@ export function TaskDetail({
   const selectedParent = (task: TaskView): TaskView | null => {
     const id = parentId.trim();
     if (!id) return null;
-    return tasks.find((item) => item.id === id) ?? null;
+    // 和下拉选项用同一份同通道列表，避免数据刚变化时选中跨通道的旧父任务。
+    return sameChannelTasks.find((item) => item.id === id) ?? null;
   };
 
   const move = async (task: TaskView): Promise<void> => {
@@ -278,7 +301,13 @@ export function TaskDetail({
   };
 
   return (
-    <aside className="task-detail task-detail-dock" aria-label="任务详情" ref={dockRef}>
+    <aside
+      className={
+        wide ? 'task-detail task-detail-dock detail-wide' : 'task-detail task-detail-dock'
+      }
+      aria-label="任务详情"
+      ref={dockRef}
+    >
       <header className="panel-header task-detail-header">
         <h3>任务详情</h3>
         <div className="inline task-detail-nav">
@@ -290,6 +319,21 @@ export function TaskDetail({
           >
             {editing ? '收起编辑' : '编辑'}
           </button>
+          {onToggleWide ? (
+            <button
+              type="button"
+              className={wide ? 'btn btn-small' : 'btn btn-small btn-ghost'}
+              aria-pressed={wide}
+              title={
+                wide
+                  ? '切换到窄侧边（520px），让任务表露出更多列'
+                  : '切换到宽侧边（约 70% 视口），方便读长描述和信息流'
+              }
+              onClick={onToggleWide}
+            >
+              {wide ? '窄侧边' : '宽侧边'}
+            </button>
+          ) : null}
           {position && total ? (
             <span className="muted small" title="按当前任务树的可视顺序">
               {position} / {total}
@@ -378,23 +422,39 @@ export function TaskDetail({
             )}
           </p>
 
+          {/*
+            父链放在当前问题之前：讨论越往下一层，越需要先知道上文已经问过什么、
+            得出过什么结论；否则用户和 harness 都容易把问题问重复。
+          */}
+          <TaskAncestors ancestors={data.ancestors ?? []} onOpenTask={onOpenTask} />
+
           {data.description_md ? <Markdown source={data.description_md} /> : null}
+
+          {/* 讨论结论是这类任务的主产物，不能只埋在信息流里。 */}
+          <TaskDiscussionAnswer
+            answer={data.discussion_answer_md}
+            answeredAt={data.discussion_answered_at}
+          />
+
+          {/*
+            批量拆子任务放在时间线/信息流之前：收起长列表后仍能一眼看到这个入口。
+            讨论任务默认拆出讨论子任务；其他类型也可以用来快速建待认领子任务。
+          */}
+          <TaskDiscussionChildren task={data} onChanged={onChanged} />
 
           <TaskDetailTimeline task={data} />
 
           {data.evidence_ids.length > 0 ? (
             <section>
               <h4>完成证据</h4>
-              <div className="inline wrap">
+              {/*
+                证据卡和普通信息一样用内联 Expander：点开就地看正文，
+                不再弹整页抽屉。证据常与信息流里的同一条重复出现，
+                两处行为保持一致，用户不用记“哪个入口会跳走”。
+              */}
+              <div className="card-expander-list">
                 {data.evidence_ids.map((cardId) => (
-                  <button
-                    key={cardId}
-                    type="button"
-                    className="link-button"
-                    onClick={() => openCard(cardId)}
-                  >
-                    卡片 {shortId(cardId)}
-                  </button>
+                  <CardExpander key={cardId} cardId={cardId} />
                 ))}
               </div>
             </section>

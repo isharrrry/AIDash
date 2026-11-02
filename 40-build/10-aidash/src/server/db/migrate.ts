@@ -35,6 +35,18 @@ interface MigrationFile {
   checksum: string;
 }
 
+/**
+ * 统一 SQL 文本的换行符。
+ *
+ * 为什么不在原始字节上算 checksum：同一份迁移在 Windows 检出（CRLF）与
+ * Linux 部署（LF）下字节不同，会让部署库已经记录的历史 checksum 与源码构建的
+ * dist 对不上，启动直接报 MIGRATION_CHECKSUM_MISMATCH。SQL 语义与换行风格无关，
+ * 因此先归一为 LF 再计算与执行；已有迁移文件本身不需要改写。
+ */
+function normalizeSqlText(sql: string): string {
+  return sql.replace(/\r\n?/g, '\n');
+}
+
 function loadMigrations(dir: string): MigrationFile[] {
   const files = fs
     .readdirSync(dir)
@@ -45,13 +57,14 @@ function loadMigrations(dir: string): MigrationFile[] {
     .filter((name) => !name.startsWith('000_'))
     .map((name) => {
       const version = Number(name.slice(0, 3));
-      const raw = fs.readFileSync(path.join(dir, name));
+      const sql = normalizeSqlText(fs.readFileSync(path.join(dir, name), 'utf8'));
       return {
         version,
         description: name.replace(/^\d+_/, '').replace(/\.sql$/, ''),
         file: name,
-        sql: raw.toString('utf8'),
-        checksum: createHash('sha256').update(raw).digest('hex'),
+        sql,
+        // 用归一后的 SQL 计算：checksum 描述的是迁移内容，而不是检出的换行风格。
+        checksum: createHash('sha256').update(sql, 'utf8').digest('hex'),
       };
     });
 }

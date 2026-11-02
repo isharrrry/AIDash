@@ -165,7 +165,7 @@ describe('REST 接入', () => {
 });
 
 describe('MCP 接入', () => {
-  it('initialize 与 tools/list 返回 23 个工具', async () => {
+  it('initialize 与 tools/list 返回 24 个工具', async () => {
     const { a } = await boot();
     const init = await mcp(a, {
       jsonrpc: '2.0',
@@ -181,10 +181,11 @@ describe('MCP 接入', () => {
 
     const list = await mcp(a, { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
     const tools = (list.result as { tools: Array<{ name: string }> }).tools;
-    expect(tools).toHaveLength(23);
+    expect(tools).toHaveLength(24);
     expect(tools.map((tool) => tool.name)).toContain('card.ask');
     expect(tools.map((tool) => tool.name)).toContain('digest.get');
     expect(tools.map((tool) => tool.name)).toContain('memory.append');
+    expect(tools.map((tool) => tool.name)).toContain('task.get');
   });
 
   it('tools/call 走通发卡、摘要与 harness 注册', async () => {

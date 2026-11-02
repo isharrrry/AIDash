@@ -40,6 +40,8 @@ const EDGE_CANDIDATES = [
 
 /** 用例造数据用的通道。刻意用一个不可能与真实业务重名的值。 */
 export const E2E_CHANNEL = 'e2e/smoke';
+/** 第二条通道：验证“全部通道”视图确实跨通道合并，而不是只渲染当前通道。 */
+export const E2E_SECOND_CHANNEL = 'e2e/smoke-two';
 
 export function findEdge() {
   for (const candidate of EDGE_CANDIDATES) {
@@ -233,6 +235,53 @@ async function api(baseUrl, token, method, route, body) {
 }
 
 /**
+ * 走正式 MCP 接口调用一个工具。
+ *
+ * 讨论任务的“完成结论”只能通过 task.update complete + answer_md 写入，
+ * 而证卡与认领也在 MCP 工具里；E2E 不能直接写 SQLite，否则造出来的数据
+ * 绕过状态机，测到的是现实中不存在的状态。
+ */
+async function mcpCall(baseUrl, token, name, args = {}) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json, text/event-stream',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`造数据失败 MCP ${name} → HTTP ${response.status}：${text.slice(0, 500)}`);
+  }
+  // 服务端可能返回纯 JSON，也可能返回 SSE；两种都取最后一个 data 行。
+  const contentType = response.headers.get('content-type') ?? '';
+  let payload;
+  if (contentType.includes('text/event-stream')) {
+    const last = text
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice('data:'.length).trim())
+      .pop();
+    payload = last ? JSON.parse(last) : null;
+  } else {
+    payload = JSON.parse(text);
+  }
+  const content = payload?.result?.content;
+  const body = content?.[0]?.text;
+  if (!body) throw new Error(`造数据失败 MCP ${name}：响应缺少 content`);
+  const parsed = JSON.parse(body);
+  if (!parsed.ok) throw new Error(`造数据失败 MCP ${name}：${JSON.stringify(parsed.error)}`);
+  return parsed.data;
+}
+
+/**
  * 通过正式 REST 接口造测试数据。
  *
  * 为什么不直接写 SQLite：
@@ -298,6 +347,76 @@ export async function seed(baseUrl, token) {
   });
   const questionCard = createdQuestion.card;
 
+  // 第二条通道只放一条任务：全部通道视图必须能同时看到两条通道的标题。
+  await api(baseUrl, token, 'POST', '/api/channels', {
+    channel_key: E2E_SECOND_CHANNEL,
+    title: 'E2E 第二通道',
+    alias: 'E2E 第二通道别名',
+  });
+  const secondTask = (
+    await api(baseUrl, token, 'POST', '/api/tasks', {
+      channel_key: E2E_SECOND_CHANNEL,
+      title: `E2E 第二通道任务 ${suffix}`,
+      description_md: '用于验证任务树“全部通道”模式不会空白。',
+      submit: true,
+    })
+  ).task;
+
+  // 讨论父任务：认领 → 发结论卡 → complete(answer_md)，让子任务能读到“上级结论”。
+  const discussionTitle = `E2E 讨论父任务 ${suffix}`;
+  const discussionAnswer = `一句话结论：${suffix} 的讨论答案是“先做小步验证”。`;
+  const discussion = (
+    await api(baseUrl, token, 'POST', '/api/tasks', {
+      channel_key: channelKey,
+      title: discussionTitle,
+      description_md: '父讨论的原始问题：这个方案值不值得做？',
+      kind: 'discussion',
+      submit: true,
+    })
+  ).task;
+  await mcpCall(baseUrl, token, 'harness.register', {
+    harness_id: 'e2e-harness',
+    name: 'E2E Harness',
+    capabilities: ['claude'],
+  });
+  const claim = await mcpCall(baseUrl, token, 'task.claim', {
+    task_id: discussion.id,
+    harness_id: 'e2e-harness',
+  });
+  // complete 只能从 in_progress 进入；这里按真实状态机走 claim → start。
+  await mcpCall(baseUrl, token, 'task.update', {
+    task_id: discussion.id,
+    event: 'start',
+    claim_token: claim.claim_token,
+  });
+  const answerCard = await mcpCall(baseUrl, token, 'card.post', {
+    channel_key: channelKey,
+    type: 'status',
+    task_id: discussion.id,
+    title: 'E2E 讨论结论卡',
+    summary: discussionAnswer,
+    detail_md: discussionAnswer,
+    result: 'success',
+  });
+  await mcpCall(baseUrl, token, 'task.update', {
+    task_id: discussion.id,
+    event: 'complete',
+    claim_token: claim.claim_token,
+    evidence_card_ids: [answerCard.card.id],
+    answer_md: discussionAnswer,
+  });
+  const discussionChildTitle = `E2E 讨论子任务 ${suffix}`;
+  const discussionChild = (
+    await api(baseUrl, token, 'POST', '/api/tasks', {
+      channel_key: channelKey,
+      parent_id: discussion.id,
+      title: discussionChildTitle,
+      description_md: '子讨论的问题：小步验证应该先验什么？',
+      kind: 'discussion',
+      submit: true,
+    })
+  ).task;
+
   return {
     channelKey,
     suffix,
@@ -307,6 +426,14 @@ export async function seed(baseUrl, token) {
     infoCardTitle: `E2E 冒烟卡片 ${suffix}`,
     questionCardTitle: `E2E 待决策问题 ${suffix}`,
     taskTitle: `E2E 冒烟任务 ${suffix}`,
+    secondChannelKey: E2E_SECOND_CHANNEL,
+    secondTaskTitle: `E2E 第二通道任务 ${suffix}`,
+    secondTaskId: secondTask.id,
+    discussionTitle,
+    discussionId: discussion.id,
+    discussionAnswer,
+    discussionChildTitle,
+    discussionChildId: discussionChild.id,
   };
 }
 

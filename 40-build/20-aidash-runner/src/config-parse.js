@@ -1,3 +1,4 @@
+import path from 'node:path';
 import {
   DEFAULT_COMMAND_TIMEOUT_SECONDS,
   DEFAULT_ENV_PASSTHROUGH,
@@ -304,6 +305,19 @@ function parseRun(value, label, configDir, defaultTimeout, issues, warnings) {
 
   const cwdRaw = stringField(value, 'cwd', `${label}.cwd`, 500, issues);
   const resultRaw = stringField(value, 'result_file', `${label}.result_file`, 500, issues);
+  if (resultRaw) {
+    // 只允许这两个占位符：{task_file_dir} 由 runner 在每次执行时创建，
+    // {task_id} 让结果按任务落盘。其它花括号保持字面量，但给出警告，
+    // 避免用户以为 `{run_id}` 之类的拼写会被替换。
+    for (const token of resultRaw.match(/\{[^}]*\}/g) ?? []) {
+      if (token !== '{task_file_dir}' && token !== '{task_id}') {
+        warnings.push(`${label}.result_file 含未知占位符 ${token}，将按字面路径处理`);
+      }
+    }
+  }
+  if (!resultRaw && argv.some((item) => item.includes('{result_file}'))) {
+    issues.push(`${label}: argv 使用了 {result_file} 占位符，但未配置 result_file`);
+  }
   const env = parseEnvMap(value.env, `${label}.env`, issues, warnings);
   const passthrough = value.env_passthrough === undefined
     ? []
@@ -326,7 +340,13 @@ function parseRun(value, label, configDir, defaultTimeout, issues, warnings) {
     ),
     env,
     env_passthrough: passthrough,
-    result_file: resultRaw ? resolvePath(resultRaw, configDir) : null,
+    // `{task_file_dir}` 必须是“每次执行”的绝对路径：先解析成 configDir 会
+    // 拼出 `D:\cfg\{task_file_dir}\result.json`，替换后变成嵌套盘符的坏路径。
+    result_file: resultRaw
+      ? resultRaw.includes('{task_file_dir}')
+        ? path.normalize(resultRaw)
+        : resolvePath(resultRaw, configDir)
+      : null,
     shell,
   };
 }

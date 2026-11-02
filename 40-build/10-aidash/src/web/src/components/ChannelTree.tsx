@@ -22,6 +22,8 @@ interface ChannelGroup {
   lastMcpAt: string | null;
   /** 组内任意一条通道的 agent 在线，就把这组显示为进行中。 */
   agentOnline: boolean;
+  /** 组内任意一条通道正在执行任务（in_progress），显示“运行中”而不是仅“在线”。 */
+  agentBusy: boolean;
 }
 
 /**
@@ -35,9 +37,10 @@ interface ChannelGroup {
  * 展开项显示“开始 / 在线或已停止 + 卡/任务计数”：
  * 通道列表的职责不是罗列名字，而是回答“agent 现在还连着吗、还有多少没干完的活”。
  *
- * 关键语义：**在线**只看服务端下发的 `agent_online`（最近 3 分钟内有 MCP 调用）。
- * 不能用 `open_task_count > 0` 代替——任务排着没做，不代表 agent 还在执行；
- * 旧实现正是这样，导致 MCP 停了几个小时通道仍一直转圈。
+ * 关键语义：**在线**只看服务端下发的 `agent_online`（最近 3 分钟内有 MCP 调用，
+ * 或该通道有 in_progress 任务）；`agent_busy` 再把“正在执行任务”单独标成「运行中」。
+ * 不能用 `open_task_count > 0` 代替——pending/blocked 只是排期和等待，
+ * 不代表 agent 还在执行；旧实现正是这样，导致 MCP 停了几个小时通道仍一直转圈。
  */
 export function ChannelTree({
   channels,
@@ -150,6 +153,7 @@ export function ChannelTree({
 
           {groups.map((group) => {
             const groupActive = group.agentOnline;
+            const groupBusy = group.agentBusy;
             const groupSelected = currentProject === group.project;
             // “未分组”只是历史数据的兜底桶，没有真实 project 值：
             // 按 project 精确筛选会得到空列表，所以不给它可点击的“聚焦”语义。
@@ -186,7 +190,7 @@ export function ChannelTree({
                       {groupActive ? (
                         <>
                           <span className="spinner spinner-xs" aria-hidden="true" />
-                          在线
+                          {groupBusy ? '运行中' : '在线'}
                         </>
                       ) : group.lastMcpAt ? (
                         `已停止 · 最后活动 ${formatStamp(group.lastMcpAt)}`
@@ -200,6 +204,7 @@ export function ChannelTree({
                 <ul className="channel-tree-list">
                   {group.channels.map((channel) => {
                     const channelActive = channel.agent_online === true;
+                    const channelBusy = channel.agent_busy === true;
                     const selected = currentChannelKey === channel.channel_key;
                     return (
                       <li
@@ -217,14 +222,18 @@ export function ChannelTree({
                               <span
                                 className="spinner spinner-xs"
                                 role="img"
-                                aria-label="agent 在线"
-                                title="最近 3 分钟内有 MCP 调用"
+                                aria-label={channelBusy ? 'agent 正在执行任务' : 'agent 在线'}
+                                title={
+                                  channelBusy
+                                    ? '正在执行任务（有 in_progress 任务）'
+                                    : '最近 3 分钟内有 MCP 调用'
+                                }
                               />
                             ) : (
                               <span
                                 className="channel-tree-dot"
                                 aria-hidden="true"
-                                title="已停止：最近 3 分钟没有 MCP 调用"
+                                title="已停止：最近 3 分钟没有 MCP 调用，也没有正在执行的任务"
                               />
                             )}
                             <strong>{channelTitle(channel)}</strong>
@@ -235,7 +244,9 @@ export function ChannelTree({
                             <span>开始 {formatStamp(channel.created_at)}</span>
                             <span>
                               {channelActive
-                                ? '在线'
+                                ? channelBusy
+                                  ? '运行中'
+                                  : '在线'
                                 : channel.last_mcp_at
                                   ? `已停止 · 最后活动 ${formatStamp(channel.last_mcp_at)}`
                                   : '已停止 · 无 MCP 活动记录'}
@@ -322,12 +333,14 @@ function groupByProject(channels: ChannelView[]): ChannelGroup[] {
       lastActiveAt: active,
       lastMcpAt: channel.last_mcp_at,
       agentOnline: false,
+      agentBusy: false,
     };
     group.channels.push(channel);
     group.cardCount += channel.card_count ?? 0;
     group.openTaskCount += channel.open_task_count ?? 0;
     // 在线是“任意一条在线”，不是“任务数大于零”：一条通道在跑就代表这组还在动。
     if (channel.agent_online === true) group.agentOnline = true;
+    if (channel.agent_busy === true) group.agentBusy = true;
     // ISO 8601 字符串可直接比较大小：取最早创建与最近活动。
     if (channel.created_at < group.startedAt) group.startedAt = channel.created_at;
     if (!group.lastActiveAt || active > group.lastActiveAt) group.lastActiveAt = active;

@@ -3,7 +3,8 @@ import path from 'node:path';
 import { Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../../../shared/errors.js';
-import type { Harness, HarnessStatus } from '../../../shared/types.js';
+import { harnessPresence } from '../../../shared/harness.js';
+import type { Harness, HarnessPresence, HarnessStatus } from '../../../shared/types.js';
 import type { AppContext } from '../../context.js';
 import { ctxOf } from '../middleware.js';
 import {
@@ -49,13 +50,23 @@ const harnessPatchSchema = z.object({
   status: z.enum(['online', 'offline', 'disabled']),
 });
 
-function toHarnessView(row: Harness): Harness & {
+interface HarnessApiView extends Omit<Harness, 'busy' | 'busy_at'> {
+  /** SQLite 的 0/1 在 API 层统一成布尔，前端不必知道列实现。 */
+  busy: boolean;
+  busy_at: string | null;
+  /** 由 status + busy 派生：busy / idle / offline / disabled。 */
+  presence: HarnessPresence;
   capabilities: string[];
   last_seen_at: string;
   registered_at_iso: string;
-} {
+}
+
+function toHarnessView(row: Harness): HarnessApiView {
   return {
     ...row,
+    busy: row.busy === 1,
+    busy_at: row.busy_at === null ? null : new Date(row.busy_at).toISOString(),
+    presence: harnessPresence(row),
     capabilities: parseCapabilities(row.capabilities_json),
     last_seen_at: new Date(row.last_seen).toISOString(),
     registered_at_iso: new Date(row.registered_at).toISOString(),

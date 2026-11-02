@@ -210,17 +210,36 @@ export function isSelfOrDescendant(candidatePath: string, taskPath: string): boo
 }
 
 /**
+ * 拖拽校验需要的最小形状。
+ *
+ * `channel_id` 可选：单通道视图里所有任务天然同通道，旧调用/测试只构造 id+path
+ * 也应保持原有层级语义；只有两边都带 channel_id 时才做跨通道判断。
+ */
+export type MovableTask = Pick<TaskView, 'id' | 'path'> & {
+  channel_id?: string | null;
+};
+
+/**
  * 拖动任务时，能否把 source 挂到 target 下面。
  *
- * 两个禁止项：
+ * 三个禁止项：
  * - 不能挂到自己下面（形成环）；
- * - 不能挂到自己的后代下面（同样形成环，而且会让整棵子树从树里消失）。
- * 挂到自己的祖先/兄弟/无关节点下都是合法的。
+ * - 不能挂到自己的后代下面（同样形成环，而且会让整棵子树从树里消失）；
+ * - 不能跨通道移动：父子关系按通道隔离，服务端也会拒绝，
+ *   前端提前拦住才能让拖拽光标和落点反馈一致。
+ * 挂到同通道的祖先/兄弟/无关节点下都是合法的。
  */
 export function canMoveTask(
-  source: Pick<TaskTreeItem, 'id' | 'path'>,
-  target: Pick<TaskTreeItem, 'id' | 'path'>,
+  source: MovableTask,
+  target: MovableTask,
 ): boolean {
+  if (
+    source.channel_id &&
+    target.channel_id &&
+    source.channel_id !== target.channel_id
+  ) {
+    return false;
+  }
   return source.id !== target.id && !isSelfOrDescendant(target.path, source.path);
 }
 

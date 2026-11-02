@@ -36,14 +36,21 @@ export function buildStatusCard({
   cwd,
   execResult,
   resultFile,
+  resultFileInfo = null,
   logFile,
   idempotencyKey,
   result,
 }) {
+  // 讨论任务的“证据”是结论本身，不是命令日志。
+  // 单独分支而不是在 buildDetail 里删内容：非讨论任务的卡片必须保持原样。
+  if (task.kind === 'discussion') {
+    return buildDiscussionCard({ task, resultFile, resultFileInfo, idempotencyKey, result });
+  }
+
   const command = displayCommand(argv);
   const success = result === 'success';
   const summary = buildSummary({ command, execResult, resultFile, result });
-  const detail = buildDetail({ command, cwd, execResult, resultFile, logFile });
+  const detail = buildDetail({ command, cwd, execResult, resultFile, resultFileInfo, logFile });
   return {
     channel_key: task.channel_key,
     type: 'status',
@@ -51,6 +58,37 @@ export function buildStatusCard({
     title: truncate(`任务 ${task.id} 执行${labelOfResult(result)}`, 200),
     priority: normalizePriority(task.priority),
     summary: sanitizeForCard(summary, CARD_SUMMARY_LIMIT) || `任务 ${task.id} 执行结束`,
+    detail_md: sanitizeForCard(detail, CARD_DETAIL_LIMIT),
+    result,
+    idempotency_key: idempotencyKey,
+  };
+}
+
+/**
+ * 结论卡：只放 harness 写回的 summary/detail_md。
+ *
+ * 讨论任务由模型直接给答案，命令只是执行载体；把 argv、退出码、输出尾巴拼进
+ * 正文会让详情页的主内容变成日志，用户还得自己从里面找结论。
+ * detail 为空时回退 summary，至少保证卡片不是空白；summary 也缺失时
+ * 才用状态标签兜底（card.post 要求 summary 非空）。
+ */
+function buildDiscussionCard({ task, resultFile, resultFileInfo = null, idempotencyKey, result }) {
+  const title = task.title ?? task.id;
+  const summary = resultFile?.summary?.trim() ?? '';
+  const baseDetail = resultFile?.detail_md?.trim() || summary;
+  // 讨论任务的结论只能来自结果文件；文件缺失/被忽略时必须明说，
+  // 否则卡片看起来像“正常完成”，用户却拿不到任何回答。
+  const note = resultFileInfo?.issue
+    ? `> 注意：${resultFileIssueLabel(resultFileInfo)}${resultFileInfo.path ? `（${resultFileInfo.path}）` : ''}；本卡没有讨论结论正文。`
+    : '';
+  const detail = [note, baseDetail].filter(Boolean).join('\n\n');
+  return {
+    channel_key: task.channel_key,
+    type: 'status',
+    task_id: task.id,
+    title: truncate(`讨论「${title}」的结论`, 200),
+    priority: normalizePriority(task.priority),
+    summary: sanitizeForCard(summary, CARD_SUMMARY_LIMIT) || `讨论任务${labelOfResult(result)}`,
     detail_md: sanitizeForCard(detail, CARD_DETAIL_LIMIT),
     result,
     idempotency_key: idempotencyKey,
@@ -86,11 +124,18 @@ function buildSummary({ command, execResult, resultFile, result }) {
   return `命令执行失败：${command}（${failureMeta}）${firstLine(execResult)}`;
 }
 
-function buildDetail({ command, cwd, execResult, resultFile, logFile }) {
+function buildDetail({ command, cwd, execResult, resultFile, resultFileInfo = null, logFile }) {
   const lines = [];
   if (resultFile?.detail_md?.trim()) {
     lines.push(resultFile.detail_md.trim(), '', '---', '');
   }
+  const resultFileLine = resultFileInfo
+    ? `- 结果文件：${resultFileInfo.path ?? '(未配置)'}${
+        resultFileInfo.issue
+          ? `（${resultFileIssueLabel(resultFileInfo)}）`
+          : '（本次执行写入）'
+      }`
+    : null;
   lines.push(
     '### 命令',
     '~~~text',
@@ -104,6 +149,7 @@ function buildDetail({ command, cwd, execResult, resultFile, logFile }) {
     `- 超时：${execResult.timedOut ? '是（已终止进程树）' : '否'}`,
     `- 启动错误：${execResult.spawnError ?? '无'}`,
     `- 工作目录：${cwd ?? '(继承 runner)'}`,
+    ...(resultFileLine ? [resultFileLine] : []),
     `- 完整日志：${logFile ?? '(未配置)'}`,
     '',
     '### 输出（首尾各 8KB）',
@@ -112,6 +158,31 @@ function buildDetail({ command, cwd, execResult, resultFile, logFile }) {
     '~~~',
   );
   return lines.join('\n');
+}
+
+/**
+ * 结果文件问题的中文说明。
+ *
+ * 日志和证据卡共用同一套措辞，用户在终端看到的原因与卡片里的一致，
+ * 不用在两个地方来回对照。
+ */
+export function resultFileIssueLabel(info) {
+  switch (info?.issue) {
+    case 'missing':
+      return '未找到本次执行写出的结果文件，harness 可能写到了别处';
+    case 'stale':
+      return '文件早于本次执行开始，已忽略';
+    case 'unchanged':
+      return '文件在本次执行期间没有更新，已忽略';
+    case 'foreign':
+      return `文件属于任务 ${info.foreignTaskId ?? '(未知)'}，已忽略`;
+    case 'invalid':
+      return '文件不是合法的结果 JSON，已忽略';
+    case 'unconfigured':
+      return '未配置结果文件';
+    default:
+      return '未知原因，已忽略';
+  }
 }
 
 export function buildFailReason({ argv, execResult, extra }) {

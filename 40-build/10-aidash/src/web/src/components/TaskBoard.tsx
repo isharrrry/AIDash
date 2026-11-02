@@ -37,6 +37,8 @@ import {
 } from './task-board-utils';
 
 const HARNESS_STORAGE_KEY = 'aidash.harness_id';
+/** 详情卡的窄/宽侧边偏好：只用 sessionStorage，刷新后仍保持当前工作姿态。 */
+const DETAIL_WIDE_STORAGE_KEY = 'aidash.task_detail_wide';
 /** 任务行下挂的决策卡一次取多少张；与服务端默认分页上限对齐。 */
 const QUESTION_CARDS_PAGE_SIZE = 200;
 
@@ -50,7 +52,8 @@ export function TaskBoard({
   channelKey,
   compact = false,
 }: {
-  channelKey: string;
+  /** 通道 key；任务树按通道取数，跨通道不能合并。 */
+  channelKey?: string;
   compact?: boolean;
 }): ReactElement {
   const { refreshNonce } = useApp();
@@ -64,6 +67,10 @@ export function TaskBoard({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [detailNonce, setDetailNonce] = useState(0);
   const [creating, setCreating] = useState(false);
+  /** 详情卡宽窄姿态；由详情头部的一键切换按钮控制。 */
+  const [detailWide, setDetailWide] = useState(
+    () => window.sessionStorage.getItem(DETAIL_WIDE_STORAGE_KEY) === '1',
+  );
   const [statuses, setStatuses] = useState<TaskStatus[]>([]);
   const [assignee, setAssignee] = useState('');
   /**
@@ -100,11 +107,18 @@ export function TaskBoard({
   // 搜索防抖稍短：本地过滤没有网络成本，200ms 足以避免长树每敲一个字就重排。
   const debouncedKeyword = useDebounced(keyword, 200);
 
+  /** 当前数据范围标识：看板永远是单通道，直接就是 channelKey。 */
+  const scopeKey = channelKey ?? '';
+
   const tree = useAsync<TreeNode[]>(
-    // 显式传服务端允许的最大创建深度，避免默认只展开前 10 层。
-    () => (channelKey ? getTaskTree(channelKey, TASK_TREE_MAX_DEPTH) : Promise.resolve([])),
-    [channelKey, refreshNonce],
-    Boolean(channelKey),
+    () => {
+      // 显式传服务端允许的最大创建深度，避免默认只展开前 10 层。
+      return channelKey
+        ? getTaskTree(channelKey, TASK_TREE_MAX_DEPTH)
+        : Promise.resolve([]);
+    },
+    [scopeKey, refreshNonce],
+    Boolean(scopeKey),
   );
   /**
    * 当前通道的决策卡。
@@ -131,8 +145,8 @@ export function TaskBoard({
             total: 0,
             has_more: false,
           }),
-    [channelKey, refreshNonce],
-    Boolean(channelKey),
+    [scopeKey, refreshNonce],
+    Boolean(scopeKey),
   );
   const harnesses = useAsync(
     () => listHarnesses(),
@@ -140,14 +154,14 @@ export function TaskBoard({
   );
 
   useEffect(() => {
-    // 切通道时清空会话令牌与选中项，避免把 A 通道的令牌误用到 B 通道。
+    // 切换通道时清空会话令牌与选中项，避免把 A 通道的令牌误用到 B 通道。
     setTokens({});
     setSelectedTaskId(null);
     setCreating(false);
-    // 未读覆盖只对当前通道的任务 id 有意义，跨通道保留会污染同 id（理论上不会重）的显示。
+    // 未读覆盖只对当前通道的任务 id 有意义，跨范围保留会污染显示。
     setUnreadOverrides({});
     setEndNoticeAcked({});
-  }, [channelKey]);
+  }, [scopeKey]);
 
   usePolling(
     // 必须返回 Promise：调度器靠它判断上一轮是否结束；
@@ -156,7 +170,7 @@ export function TaskBoard({
       await Promise.all([tree.reload(), questions.reload()]);
     },
     30000,
-    Boolean(channelKey),
+    Boolean(scopeKey),
   );
 
   useEffect(() => {
@@ -218,7 +232,7 @@ export function TaskBoard({
   const selectedIndex = selectedTaskId ? visibleIds.indexOf(selectedTaskId) : -1;
 
   useEffect(() => {
-    if (!channelKey) return;
+    if (!scopeKey) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       // 带修饰键的组合留给浏览器/系统快捷键（例如 Alt+← 后退）。
@@ -229,6 +243,10 @@ export function TaskBoard({
       // 拍板模态框自己用左右键切换卡片；任务看板在它下面，不参与。
       if (document.querySelector('.question-modal')) return;
       if (visibleIds.length === 0) return;
+      // 主对话/全部通道页会同时挂多块 compact 看板：没有打开任何详情时，
+      // 左右键若让每块都“从头进入”，一次按键会同时打开所有通道的第一条任务。
+      // 因此 compact 看板只在已经选中任务（详情开着）时响应；单通道整页看板不受限。
+      if (compact && !selectedTaskId) return;
       event.preventDefault();
       setSelectedTaskId((current) =>
         stepTaskId(visibleIds, current, event.key === 'ArrowRight' ? 'next' : 'prev'),
@@ -236,7 +254,7 @@ export function TaskBoard({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [channelKey, visibleIds]);
+  }, [scopeKey, visibleIds, compact, selectedTaskId]);
 
   // 键盘翻阅后把高亮行滚进可视区；block:'nearest' 在已经可见时不会额外跳动。
   useEffect(() => {
@@ -290,6 +308,20 @@ export function TaskBoard({
   const changeHarnessId = (value: string): void => {
     setHarnessId(value);
     window.sessionStorage.setItem(HARNESS_STORAGE_KEY, value);
+  };
+
+  /**
+   * 切换详情卡窄/宽侧边。
+   *
+   * 状态放在 TaskBoard 而不是 TaskDetail：详情组件按 taskId 重挂载，
+   * 宽窄偏好若存在详情内部，按 ←/→ 翻一条任务就会跳回默认宽度。
+   */
+  const toggleDetailWide = (): void => {
+    setDetailWide((value) => {
+      const next = !value;
+      window.sessionStorage.setItem(DETAIL_WIDE_STORAGE_KEY, next ? '1' : '0');
+      return next;
+    });
   };
 
   const claim = async (task: TreeNode): Promise<void> => {
@@ -357,9 +389,14 @@ export function TaskBoard({
     setBusyId(parent.id);
     try {
       await createTask({
-        channel_key: channelKey,
+        // 用父任务自己的通道：任务节点上的 channel_key 才是权威归属，
+        // 不依赖外层看板参数，避免两者不一致时把子任务建到别的通道。
+        channel_key: parent.channel_key,
         title,
         parent_id: parent.id,
+        // 讨论任务的子节点默认也是讨论：用户是在某条讨论线里继续拆问题，
+        // 按普通任务创建会丢掉“要的是回答”这个语义。
+        kind: parent.kind === 'discussion' ? 'discussion' : 'task',
         submit: false,
       });
       notify('success', `已添加草稿子任务：${title}`);
@@ -408,6 +445,23 @@ export function TaskBoard({
     harnesses.reload();
   };
 
+  const renderTaskTree = (nodes: TreeNode[]): ReactElement => (
+    <TaskTree
+      nodes={nodes}
+      tokens={tokens}
+      busyId={busyId}
+      harnessId={harnessId.trim()}
+      activeTaskId={selectedTaskId}
+      questionsByTask={questionsByTask}
+      onOpen={openTask}
+      onOpenCard={openCard}
+      onClaim={(task) => void claim(task)}
+      onRelease={(task, token) => void release(task, token)}
+      onAddChild={createChild}
+      onMove={moveTo}
+    />
+  );
+
   return (
     <section className={compact ? 'panel task-board compact' : 'panel task-board'} aria-label="任务树">
       <TaskBoardHeader
@@ -423,7 +477,7 @@ export function TaskBoard({
         onRefresh={refreshAll}
       />
 
-      {!channelKey ? (
+      {!scopeKey ? (
         <EmptyState
           title="先选择一个通道"
           hint="任务必须挂在通道下；点右上角「通道」展开通道树后选择。"
@@ -470,12 +524,13 @@ export function TaskBoard({
           ) : null}
 
           {/*
-            详情打开时给列表让出右侧宽度：详情卡是 fixed 到视口的，
-            它已经不在这一行的文档流里，仅靠 grid 分列不会自动留白。
+            详情卡 fixed 到视口右侧，不参与这一行的文档流，也不会把任务表挤窄；
+            用户可以在详情头部把侧边切成窄（520px）/宽（约 70% 视口）。
           */}
           <p className="muted small task-detail-hint">
-            点任务行打开页面级右侧详情卡；按 <kbd>←</kbd> / <kbd>→</kbd>{' '}
-            按当前树顺序翻阅上一条/下一条。认领需要先填 harness_id。
+            点任务行打开页面级右侧详情卡，可在详情头部切换窄/宽侧边；按{' '}
+            <kbd>←</kbd> / <kbd>→</kbd> 按当前树顺序翻阅上一条/下一条。认领需要先填
+            harness_id。
           </p>
 
           {/* 挂到任务行的决策卡只是一窗数据；被截断时必须在树上方说明。 */}
@@ -486,7 +541,7 @@ export function TaskBoard({
             </p>
           ) : null}
 
-          <div className={selectedTaskId ? 'task-board-grid detail-open' : 'task-board-grid'}>
+          <div className="task-board-grid">
             <div className="task-tree-wrap">
               {tree.loading && !tree.data ? <Loading label="加载任务树…" /> : null}
               {tree.error ? <ErrorBox message={tree.error} onRetry={tree.reload} /> : null}
@@ -497,20 +552,7 @@ export function TaskBoard({
                   hint="点“新建任务”创建第一个；任务默认是草稿或直接提交为待认领。"
                 />
               ) : (
-                <TaskTree
-                  nodes={visibleTree}
-                  tokens={tokens}
-                  busyId={busyId}
-                  harnessId={harnessId.trim()}
-                  activeTaskId={selectedTaskId}
-                  questionsByTask={questionsByTask}
-                  onOpen={openTask}
-                  onOpenCard={openCard}
-                  onClaim={(task) => void claim(task)}
-                  onRelease={(task, token) => void release(task, token)}
-                  onAddChild={createChild}
-                  onMove={moveTo}
-                />
+                renderTaskTree(visibleTree)
               )}
             </div>
 
@@ -529,6 +571,8 @@ export function TaskBoard({
                 total={visibleIds.length}
                 onClose={() => setSelectedTaskId(null)}
                 onUnreadChange={handleUnreadChange}
+                wide={detailWide}
+                onToggleWide={toggleDetailWide}
               />
             ) : null}
           </div>

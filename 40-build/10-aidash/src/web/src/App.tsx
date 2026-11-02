@@ -176,9 +176,12 @@ function AppShell(): ReactElement {
     setCurrentProject,
   };
 
+  // 任务树/通道页是宽表格工作区，放宽内容区上限；其他页面保持 1440 的阅读宽度。
+  const wideLayout = route.name === 'tasks' || route.name === 'channel';
+
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="app">
+      <div className={wideLayout ? 'app app-wide' : 'app'}>
         <TopBar
           routeName={route.name}
           connection={connection}

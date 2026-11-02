@@ -24,14 +24,25 @@ import { TaskBoard } from '../src/web/src/components/TaskBoard.js';
 import { TaskDetail } from '../src/web/src/components/TaskDetail.js';
 import { TaskTree } from '../src/web/src/components/TaskTree.js';
 import { ToastProvider } from '../src/web/src/components/Toast.js';
+import { TasksPage } from '../src/web/src/pages/TasksPage.js';
 import * as endpoints from '../src/web/src/api/endpoints.js';
-import type { CardView, Page, TaskView, TreeNode } from '../src/web/src/types.js';
+import type {
+  CardView,
+  ChannelView,
+  Page,
+  TaskView,
+  TreeNode,
+} from '../src/web/src/types.js';
 
 vi.mock('../src/web/src/api/endpoints.js', () => ({
   ackEndNotice: vi.fn(),
+  answerCard: vi.fn(),
+  archiveCard: vi.fn(),
   claimTask: vi.fn(),
   copyTask: vi.fn(),
   createTask: vi.fn(),
+  dismissCard: vi.fn(),
+  getCard: vi.fn(),
   getTask: vi.fn(),
   getTaskTree: vi.fn(),
   listCards: vi.fn(),
@@ -39,6 +50,8 @@ vi.mock('../src/web/src/api/endpoints.js', () => ({
   markCardRead: vi.fn(),
   moveTask: vi.fn(),
   releaseTask: vi.fn(),
+  setHandoffState: vi.fn(),
+  updateCard: vi.fn(),
   updateTask: vi.fn(),
 }));
 
@@ -193,6 +206,7 @@ afterEach(async () => {
   }
   vi.restoreAllMocks();
   vi.resetAllMocks();
+  window.sessionStorage.clear();
   document.body.innerHTML = '';
 });
 
@@ -268,7 +282,80 @@ function unreadCard(overrides: Partial<CardView> = {}): CardView {
   } as unknown as CardView;
 }
 
-function appContext(): AppContextValue {
+/** 完整 CardView：内联展开会读取正文、徽标、链接、增强等字段，不能只给最小子集。 */
+function cardView(overrides: Partial<CardView> = {}): CardView {
+  return {
+    id: 'cd_status',
+    channel_id: 'ch_1',
+    channel_key: 'host/proj/topic',
+    type: 'status',
+    status: 'open',
+    priority: 'P2',
+    title: '任务执行成功',
+    body_md: null,
+    background_md: null,
+    goal_md: null,
+    research_md: null,
+    decision_md: null,
+    message_md: null,
+    preview_md: null,
+    summary: '任务执行成功',
+    detail_md: '**证据**：服务已启动，/api/health 返回 ok。',
+    severity: null,
+    recipient: null,
+    channel_kind: null,
+    reason: null,
+    handoff_state: null,
+    options: [],
+    allow_free_text: false,
+    default_action: null,
+    due_at: null,
+    answer: null,
+    answered_at: null,
+    url: null,
+    kind: null,
+    size_bytes: null,
+    result: 'success',
+    suggestions: [],
+    kb_refs: [],
+    links: [],
+    blocking: false,
+    task_id: 'tk_alpha',
+    read_at: null,
+    enrichment: { status: 'skipped' },
+    created_at: '2026-10-24T12:00:00.000Z',
+    updated_at: '2026-10-24T12:00:00.000Z',
+    archived_at: null,
+    ...overrides,
+  };
+}
+
+/** 构造通道列表项；只填 TaskBoard 会读取的字段，其余给安全默认值。 */
+function channel(overrides: Partial<ChannelView> = {}): ChannelView {
+  return {
+    id: 'ch_1',
+    channel_key: 'host/proj/topic',
+    title: null,
+    alias: null,
+    name: null,
+    project: null,
+    topic: null,
+    workdir: null,
+    status: 'active',
+    card_count: 0,
+    task_count: 1,
+    open_task_count: 1,
+    last_mcp_at: null,
+    agent_online: false,
+    agent_busy: false,
+    last_active_at: null,
+    created_at: '2026-10-24T10:00:00.000Z',
+    updated_at: '2026-10-24T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function appContext(overrides: Partial<AppContextValue> = {}): AppContextValue {
   return {
     refreshNonce: 0,
     refreshAll: vi.fn(),
@@ -279,13 +366,17 @@ function appContext(): AppContextValue {
     setCurrentChannelKey: vi.fn(),
     currentProject: '',
     setCurrentProject: vi.fn(),
+    ...overrides,
   };
 }
 
-function withProviders(child: ReactElement): ReactElement {
+function withProviders(
+  child: ReactElement,
+  context: AppContextValue = appContext(),
+): ReactElement {
   return createElement(
     AppContext.Provider,
-    { value: appContext() },
+    { value: context },
     createElement(ToastProvider, null, child),
   );
 }
@@ -340,6 +431,12 @@ beforeEach(() => {
   vi.mocked(endpoints.releaseTask).mockReset().mockResolvedValue(task());
   vi.mocked(endpoints.createTask).mockReset().mockResolvedValue({ task: task(), created: true });
   vi.mocked(endpoints.ackEndNotice).mockReset().mockResolvedValue(task());
+  vi.mocked(endpoints.getCard).mockReset().mockResolvedValue(cardView());
+  vi.mocked(endpoints.answerCard).mockReset().mockResolvedValue(cardView());
+  vi.mocked(endpoints.setHandoffState).mockReset().mockResolvedValue(cardView());
+  vi.mocked(endpoints.updateCard).mockReset().mockResolvedValue(cardView());
+  vi.mocked(endpoints.archiveCard).mockReset().mockResolvedValue(cardView({ status: 'archived' }));
+  vi.mocked(endpoints.dismissCard).mockReset().mockResolvedValue(cardView({ status: 'dismissed' }));
 
   // 让每个用例明确“这些函数都没被调用过”；具体用例再按需覆盖实现。
   vi.clearAllMocks();
@@ -412,6 +509,28 @@ describe('TaskBoard', () => {
     ).toBe('true');
   });
 
+  it('详情卡可在窄侧边和宽侧边之间一键切换，翻到下一条也不丢宽度', async () => {
+    const container = await mountBoard(boardTasks());
+    await click(container.querySelector('[data-task-id="tk_alpha"]'));
+    await waitFor(() => detailTitle(container) === 'Alpha 任务', '详情显示 Alpha 任务');
+
+    const detail = container.querySelector<HTMLElement>('aside[aria-label="任务详情"]');
+    expect(detail?.classList.contains('detail-wide')).toBe(false);
+
+    await click(findButton(container, '宽侧边'));
+    expect(container.querySelector<HTMLElement>('aside[aria-label="任务详情"]')?.classList.contains('detail-wide')).toBe(true);
+    const narrowButton = findButton(container, '窄侧边');
+    expect(narrowButton?.getAttribute('aria-pressed')).toBe('true');
+
+    // 翻任务会按 taskId 重挂载详情；宽度偏好必须留在 TaskBoard 层，不能跳回窄侧边。
+    await pressKey('ArrowRight');
+    await waitFor(() => detailTitle(container) === 'Beta 任务', '右方向键选中第二条');
+    expect(container.querySelector<HTMLElement>('aside[aria-label="任务详情"]')?.classList.contains('detail-wide')).toBe(true);
+
+    await click(findButton(container, '窄侧边'));
+    expect(container.querySelector<HTMLElement>('aside[aria-label="任务详情"]')?.classList.contains('detail-wide')).toBe(false);
+  });
+
   it('方向键按可视顺序切换任务：→ 进入第一条、再 → 到第二条、← 返回第一条', async () => {
     const container = await mountBoard(boardTasks());
 
@@ -452,6 +571,211 @@ describe('TaskBoard', () => {
       () => container.querySelector('[aria-label="1 条未读信息"]') === null,
       '未读红点消失',
     );
+  });
+});
+
+describe('TasksPage 多通道看板', () => {
+  it('全部通道视图为每条有任务的通道渲染一块“本次通道任务”看板', async () => {
+    const channels = [
+      channel({ id: 'ch_a', channel_key: 'host/a', task_count: 2 }),
+      channel({ id: 'ch_b', channel_key: 'host/b', task_count: 1 }),
+      // 没有任务的通道不渲染空看板，也不该发取树请求：task_count=0 必然返回空树。
+      channel({ id: 'ch_empty', channel_key: 'host/empty', task_count: 0 }),
+    ];
+    const aChild = task({
+      id: 'tk_a_child',
+      title: 'A 子任务',
+      channel_id: 'ch_a',
+      channel_key: 'host/a',
+      parent_id: 'tk_a',
+      path: '/tk_a/tk_a_child/',
+    });
+    const aRoot = task({
+      id: 'tk_a',
+      title: 'A 根任务',
+      channel_id: 'ch_a',
+      channel_key: 'host/a',
+      children: [aChild],
+    });
+    const bRoot = task({
+      id: 'tk_b',
+      title: 'B 根任务',
+      channel_id: 'ch_b',
+      channel_key: 'host/b',
+    });
+    vi.mocked(endpoints.getTaskTree).mockImplementation(async (key) => {
+      if (key === 'host/a') return [aRoot];
+      if (key === 'host/b') return [bRoot];
+      throw new Error(`不应请求无任务通道：${key}`);
+    });
+
+    const container = await mount(
+      withProviders(
+        createElement(TasksPage),
+        appContext({ channels, currentChannelKey: '', currentProject: '' }),
+      ),
+    );
+
+    await waitFor(
+      () =>
+        (container.textContent?.includes('A 根任务') ?? false) &&
+        (container.textContent?.includes('B 根任务') ?? false),
+      '两个通道的看板同时渲染',
+    );
+
+    // 全部通道视图不再把所有通道塞进一个看板：一条通道一块独立看板。
+    const boards = Array.from(container.querySelectorAll('.task-channel-group'));
+    expect(boards).toHaveLength(2);
+    expect(container.querySelector('.task-board:not(.compact)')).toBeNull();
+    expect(container.textContent).not.toContain('全部通道任务');
+    for (const board of boards) {
+      // 每块内部都是独立 compact 看板，标题统一为“本次通道任务”。
+      expect(
+        board.querySelector('.task-board.compact .task-board-header h2')?.textContent,
+      ).toBe('本次通道任务');
+    }
+    expect(boards[0]?.textContent).toContain('host/a');
+    expect(boards[0]?.querySelector('[data-task-id="tk_a"]')).not.toBeNull();
+    expect(boards[0]?.querySelector('[data-task-id="tk_b"]')).toBeNull();
+    expect(boards[1]?.textContent).toContain('host/b');
+    expect(boards[1]?.querySelector('[data-task-id="tk_b"]')).not.toBeNull();
+    expect(endpoints.getTaskTree).toHaveBeenCalledWith('host/a', 20);
+    expect(endpoints.getTaskTree).toHaveBeenCalledWith('host/b', 20);
+    expect(endpoints.getTaskTree).not.toHaveBeenCalledWith('host/empty', 20);
+    // 每块只看自己通道的决策卡，不能跨通道混挂。
+    expect(endpoints.listCards).toHaveBeenCalledWith({
+      channel_key: 'host/a',
+      types: ['question'],
+      page_size: 200,
+    });
+    expect(endpoints.listCards).toHaveBeenCalledWith({
+      channel_key: 'host/b',
+      types: ['question'],
+      page_size: 200,
+    });
+  });
+
+  it('主对话聚焦时每条子通道一块看板，且不混入其他主对话的通道', async () => {
+    const channels = [
+      channel({ id: 'ch_a', channel_key: 'host/a', project: 'proj', task_count: 1 }),
+      channel({ id: 'ch_b', channel_key: 'host/b', project: 'proj', task_count: 1 }),
+      channel({ id: 'ch_c', channel_key: 'host/c', project: 'other', task_count: 1 }),
+    ];
+    vi.mocked(endpoints.getTaskTree).mockImplementation(async (key) => [
+      task({ title: `${key} 的任务`, channel_key: key }),
+    ]);
+
+    const container = await mount(
+      withProviders(
+        createElement(TasksPage),
+        appContext({ channels, currentChannelKey: '', currentProject: 'proj' }),
+      ),
+    );
+
+    await waitFor(
+      () => (container.textContent?.includes('host/a 的任务') ?? false) &&
+        (container.textContent?.includes('host/b 的任务') ?? false),
+      '主对话下两条通道的看板渲染',
+    );
+    expect(container.querySelectorAll('.task-channel-group')).toHaveLength(2);
+    expect(container.textContent).not.toContain('host/c 的任务');
+    expect(endpoints.getTaskTree).toHaveBeenCalledWith('host/a', 20);
+    expect(endpoints.getTaskTree).toHaveBeenCalledWith('host/b', 20);
+    expect(endpoints.getTaskTree).not.toHaveBeenCalledWith('host/c', 20);
+  });
+
+  it('单个通道取树失败只影响该块，其他通道看板照常渲染', async () => {
+    const channels = [
+      channel({ id: 'ch_a', channel_key: 'host/a', task_count: 1 }),
+      channel({ id: 'ch_b', channel_key: 'host/b', task_count: 1 }),
+    ];
+    vi.mocked(endpoints.getTaskTree).mockImplementation(async (key) => {
+      if (key === 'host/a') {
+        return [
+          task({
+            id: 'tk_a',
+            title: '可用任务',
+            channel_id: 'ch_a',
+            channel_key: 'host/a',
+          }),
+        ];
+      }
+      throw new Error('通道 404');
+    });
+
+    const container = await mount(
+      withProviders(
+        createElement(TasksPage),
+        appContext({ channels, currentChannelKey: '', currentProject: '' }),
+      ),
+    );
+
+    await waitFor(
+      () => container.textContent?.includes('可用任务') ?? false,
+      '成功通道的任务渲染',
+    );
+    expect(container.querySelector('[data-task-id="tk_a"]')).not.toBeNull();
+    expect(container.textContent).toContain('通道 404');
+    // 两条通道仍然各有一块看板：失败块显示错误，不拖垮整页。
+    expect(container.querySelectorAll('.task-channel-group')).toHaveLength(2);
+  });
+
+  it('没有任何带任务的通道时显示“还没有任何通道任务”', async () => {
+    const context = appContext({
+      channels: [channel({ id: 'ch_empty', channel_key: 'host/empty', task_count: 0 })],
+      currentChannelKey: '',
+      currentProject: '',
+    });
+    const container = await mount(
+      withProviders(createElement(TasksPage), context),
+    );
+
+    await waitFor(
+      () => container.textContent?.includes('还没有任何通道任务') ?? false,
+      '全部通道空状态',
+    );
+    expect(container.querySelector('.task-channel-group')).toBeNull();
+    expect(endpoints.getTaskTree).not.toHaveBeenCalled();
+  });
+
+  it('新建任务表单固定落在所属通道，不再提供跨通道选择器', async () => {
+    const channels = [
+      channel({ id: 'ch_a', channel_key: 'host/a', task_count: 1 }),
+      channel({ id: 'ch_b', channel_key: 'host/b', task_count: 1 }),
+    ];
+    vi.mocked(endpoints.getTaskTree).mockImplementation(async (key) =>
+      key === 'host/a'
+        ? [task({ id: 'tk_a', title: 'A 根任务', channel_id: 'ch_a', channel_key: 'host/a' })]
+        : [task({ id: 'tk_b', title: 'B 根任务', channel_id: 'ch_b', channel_key: 'host/b' })],
+    );
+
+    const container = await mount(
+      withProviders(
+        createElement(TasksPage),
+        appContext({ channels, currentChannelKey: '', currentProject: '' }),
+      ),
+    );
+    await waitFor(
+      () => (container.textContent?.includes('A 根任务') ?? false) &&
+        (container.textContent?.includes('B 根任务') ?? false),
+      '两个通道的看板同时渲染',
+    );
+
+    const boards = Array.from(container.querySelectorAll('.task-channel-group'));
+    await click(findButton(boards[0] as HTMLElement, '新建任务'));
+    const form = await waitFor(
+      () => boards[0]?.querySelector<HTMLFormElement>('form.create-task'),
+      '新建任务表单渲染',
+    );
+    // 通道由外层看板固定，表单不再暴露通道选择器。
+    expect(form.textContent).toContain('通道 host/a');
+    expect(form.querySelector('select[aria-label="任务通道"]')).toBeNull();
+    // 父任务下拉只列本通道任务，避免提交跨通道父子关系。
+    const parentLabels = Array.from(
+      form.querySelectorAll('select[aria-label="父任务"] option'),
+    ).map((option) => option.textContent ?? '');
+    expect(parentLabels.some((label) => label.includes('A 根任务'))).toBe(true);
+    expect(parentLabels.some((label) => label.includes('B 根任务'))).toBe(false);
   });
 });
 
@@ -512,5 +836,164 @@ describe('TaskDetail', () => {
       () => container.textContent?.includes('任务层级已移动') ?? false,
       '移动成功提示',
     );
+  });
+
+  it('信息流条目点击后原位展开完整卡片详情，再次点击收起，不打开抽屉', async () => {
+    const detail = '**证据**：服务已启动，/api/health 返回 ok。';
+    const card = cardView({ detail_md: detail });
+    vi.mocked(endpoints.getTask).mockResolvedValue(task({ id: 'tk_alpha' }));
+    vi.mocked(endpoints.listCards).mockResolvedValue(page([card]));
+
+    const container = await mount(
+      withProviders(
+        createElement(TaskDetail, {
+          taskId: 'tk_alpha',
+          tasks: [task({ id: 'tk_alpha' })] as TaskView[],
+          claimToken: null,
+          reloadNonce: 0,
+          onChanged: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      ),
+    );
+
+    const toggle = await waitFor(
+      () => container.querySelector<HTMLButtonElement>('.task-feed-main'),
+      '信息流条目渲染',
+    );
+    // 收起状态只有摘要，没有正文。
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('服务已启动');
+
+    await click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const expanded = await waitFor(
+      () => container.querySelector('.task-feed-detail .card-inline-detail'),
+      '内联卡片详情展开',
+    );
+    expect(expanded.textContent).toContain('服务已启动');
+    // 信息流内联展开不应把页面导航到卡片抽屉（?card=cd_...）。
+    expect(window.location.hash).not.toContain('card=');
+
+    await click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.task-feed-detail')).toBeNull();
+  });
+
+  it('完成证据卡片按需加载并原位展开，同样不跳转到抽屉', async () => {
+    const evidence = cardView({
+      id: 'cd_ev',
+      title: '构建通过',
+      detail_md: '证据：构建 231 通过，产物已上传。',
+    });
+    vi.mocked(endpoints.getTask).mockResolvedValue(
+      task({ id: 'tk_alpha', evidence_ids: ['cd_ev'] }),
+    );
+    vi.mocked(endpoints.listCards).mockResolvedValue(page([]));
+    vi.mocked(endpoints.getCard).mockResolvedValue(evidence);
+
+    const container = await mount(
+      withProviders(
+        createElement(TaskDetail, {
+          taskId: 'tk_alpha',
+          tasks: [task({ id: 'tk_alpha' })] as TaskView[],
+          claimToken: null,
+          reloadNonce: 0,
+          onChanged: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      ),
+    );
+
+    const evidenceSection = await waitFor(
+      () => findSection(container, '完成证据'),
+      '完成证据区渲染',
+    );
+    // 收起时不请求卡片详情，只显示卡片 ID。
+    expect(endpoints.getCard).not.toHaveBeenCalled();
+    const toggle = findButton(evidenceSection, '卡片 cd_ev');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+
+    await click(toggle);
+    expect(endpoints.getCard).toHaveBeenCalledWith('cd_ev');
+    const expanded = await waitFor(
+      () => evidenceSection.querySelector('.card-expander-body .card-inline-detail'),
+      '证据卡片内联展开',
+    );
+    expect(expanded.textContent).toContain('构建 231 通过');
+    expect(window.location.hash).not.toContain('card=');
+
+    await click(toggle);
+    expect(evidenceSection.querySelector('.card-expander-body')).toBeNull();
+  });
+
+  it('信息流里展开的决策卡可以直接在原位作答，不必打开抽屉', async () => {
+    const question = cardView({
+      id: 'cd_q',
+      type: 'question',
+      status: 'open',
+      title: '先回滚还是先修白名单？',
+      summary: null,
+      detail_md: null,
+      options: [
+        {
+          id: 'rollback',
+          label: '立即回滚',
+          pros_md: '恢复最快',
+          cons_md: '根因仍在',
+          recommendation_role: 'primary',
+        },
+        {
+          id: 'fix',
+          label: '等白名单修复',
+          pros_md: '消除根因',
+          cons_md: '耗时更长',
+          recommendation_role: 'backup',
+        },
+      ],
+      allow_free_text: false,
+    });
+    vi.mocked(endpoints.getTask).mockResolvedValue(task({ id: 'tk_alpha' }));
+    vi.mocked(endpoints.listCards).mockResolvedValue(page([question]));
+    vi.mocked(endpoints.answerCard).mockResolvedValue(
+      cardView({ ...question, status: 'answered' }),
+    );
+
+    const container = await mount(
+      withProviders(
+        createElement(TaskDetail, {
+          taskId: 'tk_alpha',
+          tasks: [task({ id: 'tk_alpha' })] as TaskView[],
+          claimToken: null,
+          reloadNonce: 0,
+          onChanged: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      ),
+    );
+
+    const toggle = await waitFor(
+      () => container.querySelector<HTMLButtonElement>('.task-feed-main'),
+      '决策卡条目渲染',
+    );
+    await click(toggle);
+    const option = await waitFor(
+      () => container.querySelector<HTMLInputElement>('input[value="rollback"]'),
+      '原位展开后的选项',
+    );
+    await click(option);
+    await click(findButton(container, '提交回答'));
+
+    expect(endpoints.answerCard).toHaveBeenCalledWith('cd_q', {
+      option_id: 'rollback',
+      free_text: null,
+      note: null,
+    });
+    // 作答后重新拉取信息流，条目仍留在原位，不跳到抽屉。
+    await waitFor(
+      () => vi.mocked(endpoints.listCards).mock.calls.length >= 2,
+      '作答后刷新信息流',
+    );
+    expect(window.location.hash).not.toContain('card=');
   });
 });

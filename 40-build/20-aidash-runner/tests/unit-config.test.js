@@ -269,6 +269,46 @@ test('相对 cwd/result_file 按配置文件目录解析', () => {
   assert.equal(config.commands[0].run.result_file, path.join(configDir, 'out', 'result.json'));
 });
 
+test('result_file 模板保留 {task_file_dir}，相对路径仍按配置目录解析', () => {
+  const configDir = tempDir();
+  const config = parseConfigObject(
+    {
+      commands: [
+        makeRule({
+          argv: ['node', '-v', '{result_file}'],
+          match: { match_all: true },
+          run: { result_file: '{task_file_dir}/result.json' },
+        }),
+        makeRule({
+          argv: ['node', '-v'],
+          match: { match_all: true },
+          run: { result_file: 'out/{task_id}.json' },
+        }),
+      ],
+    },
+    { configPath: path.join(configDir, 'aidash-runner.json'), configDir },
+  );
+  // 含 {task_file_dir} 的模板必须保持原样，不能先拼上配置目录。
+  assert.equal(config.commands[0].run.result_file, path.normalize('{task_file_dir}/result.json'));
+  assert.equal(config.commands[1].run.result_file, path.join(configDir, 'out', '{task_id}.json'));
+});
+
+test('argv 使用 {result_file} 但未配置 result_file 时拒绝', () => {
+  assert.throws(
+    () =>
+      parseConfigObject({
+        commands: [
+          makeRule({
+            argv: ['node', '-v', '{result_file}'],
+            match: { match_all: true },
+            run: { result_file: '' },
+          }),
+        ],
+      }),
+    (error) => error instanceof ConfigError && error.message.includes('{result_file}'),
+  );
+});
+
 test('环境变量白名单过滤令牌类变量并给出警告', () => {
   const warnings = [];
   const config = parseConfigObject(

@@ -479,6 +479,31 @@ describe('CLI 心跳与回报', () => {
     await loop.stop(false);
   });
 
+  it('busy 状态切换立即补一拍，相同状态不重复', async () => {
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const client = fakeClient((name, args) => {
+      calls.push({ name, args });
+      return args;
+    });
+    const loop = new HeartbeatLoop(
+      { client, config, logger: new Logger('error') },
+      () => undefined,
+    );
+
+    loop.setBusy(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls.filter((call) => call.args.status_hint === 'busy')).toHaveLength(1);
+
+    loop.setBusy(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls.filter((call) => call.args.status_hint === 'busy')).toHaveLength(1);
+
+    loop.setBusy(false);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls.filter((call) => call.args.status_hint === 'idle')).toHaveLength(1);
+    await loop.stop(false);
+  });
+
   it('状态卡 summary 非空，释放失败只告警不抛错', async () => {
     const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const client = fakeClient((name, args) => {

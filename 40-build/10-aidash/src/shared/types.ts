@@ -19,9 +19,21 @@ export type TaskStatus =
  *
  * `suggestion` 表示“agent 提出、等用户批准后才执行”的建议：
  * 创建后停在 draft，用户在任务树里能看到并决定是否推进，不需要额外发通知卡。
+ *
+ * `discussion` 表示“以问答为主”的讨论任务：harness 的重点是用大白话回答，
+ * 而不是改代码或跑命令。讨论任务可以在详情页批量拆出子讨论（默认同样是 discussion），
+ * 子任务执行时必须能看到父链上下文，避免遗忘上文。
  */
-export type TaskKind = 'task' | 'suggestion';
+export type TaskKind = 'task' | 'suggestion' | 'discussion';
 export type HarnessStatus = 'online' | 'offline' | 'disabled';
+
+/**
+ * 注册表展示用的合成状态：在“在线”的基础上再按是否正在执行任务拆成 busy / idle。
+ *
+ * 它不落库，由 status + busy 两列派生；单独用类型表达是为了让 UI/API 不必各自
+ * 重复写一遍“disabled 优先、offline 次之”的判定顺序。
+ */
+export type HarnessPresence = 'busy' | 'idle' | 'offline' | 'disabled';
 export type ChannelStatus = 'active' | 'archived';
 export type EnrichmentStatus = 'pending' | 'running' | 'done' | 'unavailable' | 'skipped';
 export type HandoffState = 'draft' | 'copied' | 'sent' | 'ack';
@@ -184,6 +196,16 @@ export interface Task {
    * 重新标记隐患时清空——新一轮风险需要新的结论。
    */
   risk_resolution: string | null;
+  /**
+   * 讨论任务的结论（Markdown，大白话）。
+   *
+   * 与证据卡里的执行日志分开存放：讨论的产出就是这段回答，
+   * Web 详情页要把它置顶展示，子讨论也要把它作为父级上下文继承。
+   * 非讨论任务该值始终为 null。
+   */
+  discussion_answer_md: string | null;
+  /** 讨论结论写入时间；null 表示还没有结论。 */
+  discussion_answered_at: number | null;
   evidence_json: string | null;
   idempotency_key: string | null;
   created_by: string | null;
@@ -197,6 +219,10 @@ export interface Harness {
   host: string | null;
   capabilities_json: string | null;
   status: HarnessStatus;
+  /** 1 = 心跳自报 busy；0 = idle 或尚未上报。用 0/1 是因为 SQLite 布尔列。 */
+  busy: number;
+  /** 最近一次收到 busy/idle 提示的时间；null = 从未上报。 */
+  busy_at: number | null;
   last_seen: number;
   registered_at: number;
   updated_at: number;
@@ -372,6 +398,28 @@ export interface EnrichmentView {
   reason?: string | null;
 }
 
+/**
+ * 父链上下文（根 → 直接父任务）。
+ *
+ * 只挂在单任务详情、认领响应与 task.get 上，列表/树不带：
+ * 讨论任务每往下一层，harness 都必须知道上一层的原始问题和已经得出的结论；
+ * 把这些字段随 claim 一起下发，runner 写 {task_file} 时就不需要再逐层请求。
+ *
+ * 文本字段做长度截断（服务端执行），避免一条历史任务的超大截图 base64
+ * 把整个认领响应和提示词撑爆。
+ */
+export interface TaskAncestorView {
+  id: string;
+  title: string;
+  kind: TaskKind;
+  status: TaskStatus;
+  /** 距离当前任务的层数：直接父任务为 1，祖父为 2。 */
+  depth: number;
+  description_md: string | null;
+  /** 该祖先若为讨论任务，这里带上它已经产出的结论。 */
+  discussion_answer_md: string | null;
+}
+
 export interface TaskView {
   id: string;
   channel_id: string;
@@ -380,7 +428,7 @@ export interface TaskView {
   path: string;
   title: string;
   description_md: string | null;
-  /** 任务类型：普通任务 / 建议（待用户批准）。 */
+  /** 任务类型：普通任务 / 建议（待用户批准）/ 讨论。 */
   kind: TaskKind;
   /** 任务分类（单值归属）；null 表示未分类。 */
   category: string | null;
@@ -426,6 +474,15 @@ export interface TaskView {
   risk_resolved_at: string | null;
   /** 解除隐患时的复盘结论（可选）；重新标记时清空。 */
   risk_resolution: string | null;
+  /** 讨论结论（Markdown）；非讨论任务恒为 null。 */
+  discussion_answer_md: string | null;
+  /** 讨论结论写入时间。 */
+  discussion_answered_at: string | null;
+  /**
+   * 父链上下文；只有单任务详情、认领响应和 task.get 会填充。
+   * 列表/树不带，避免批量查询为每个节点回溯祖先。
+   */
+  ancestors?: TaskAncestorView[];
   evidence_ids: string[];
   /**
    * 该任务下未读信息卡数量（不含已归档卡）。
@@ -462,12 +519,17 @@ export interface ChannelView {
   /** 最近一次 MCP 活动时间；null 表示从未观测到。 */
   last_mcp_at: string | null;
   /**
-   * 是否有 agent 在线：last_mcp_at 在离线阈值内。
+   * 是否有 agent 在线：last_mcp_at 在离线阈值内，**或**该通道有正在执行的任务。
    *
    * 由服务端按 `AIDASH_OFFLINE_THRESHOLD_SECONDS` 计算，避免 Web 和 MCP
-   * 各用一套阈值。未结束任务再多也不会让它为 true。
+   * 各用一套阈值。为什么把 in_progress 任务也算在线：runner 执行长任务时
+   * 只在开始/续租/结束时调用 MCP，中间可能超过阈值没有任何请求；只看
+   * last_mcp_at 会让“正在干活”的通道显示成“已停止”。
+   * pending 任务（还没人认领）仍不算在线。
    */
   agent_online: boolean;
+  /** 通道内有 in_progress 任务（runner 正在执行）。用于把“运行中”与“空闲在线”区分开。 */
+  agent_busy: boolean;
   last_active_at: string | null;
   created_at: string;
   updated_at: string;

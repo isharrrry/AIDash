@@ -12,7 +12,7 @@ import { registerTaskTools } from './tasks.js';
 import type { ToolDeps } from './shared.js';
 
 /**
- * 注册 MCP-001~023。
+ * 注册 MCP-001~024。
  *
  * 为什么每个请求都新建 server/transport：SDK 的 stateless 模式不保存会话，
  * 共享实例会让并发请求互相污染 initialization 状态；新建成本只是内存对象，可以忽略。

@@ -79,6 +79,26 @@ export function applyTaskUpdate(
   const task = requireTask(deps.tasks, input.task_id);
   const now = deps.clock.now();
   const patch = buildPatch(input);
+  // 空串/纯空白按“没提供”处理：调用方常把可选字段统一填成 ''，
+  // 这类值不应该被当成“提交了一份空结论”。
+  const answer = input.answer_md?.trim();
+
+  // 结论只能由讨论任务在 complete 时提交。其他组合一律拒绝：
+  // 若允许普通任务写 answer_md，“完成理由”就会混进讨论结论字段，
+  // 之后作为父链上下文下发给子任务，语义完全错位。
+  if (answer) {
+    if (input.event !== 'complete') {
+      throw new AppError('INVALID_ARGUMENT', 'ANSWER_REQUIRES_COMPLETE', {
+        event: input.event ?? null,
+      });
+    }
+    if (task.kind !== 'discussion') {
+      throw new AppError('INVALID_ARGUMENT', 'ANSWER_NOT_DISCUSSION', {
+        task_id: task.id,
+        kind: task.kind,
+      });
+    }
+  }
 
   // 所有 reason 最终都会落库：block/fail/cancel/retry 写原因列，defer/risk 写覆盖层
   // 或复盘结论；patch 里的标题/描述与创建走同一套规则。
@@ -86,6 +106,9 @@ export function applyTaskUpdate(
     title: patch.title ?? '',
     description_md: patch.description_md ?? '',
     reason: input.reason ?? '',
+    // 结论会进入 Web 详情与父链上下文，与描述共用敏感模式扫描，
+    // 避免绕过 card.post 的“贴令牌”检查从讨论结论落库。
+    answer_md: answer ?? '',
   });
 
   if (!input.event) {
@@ -142,6 +165,12 @@ export function applyTaskUpdate(
 
   if (event === 'complete') {
     patch.evidence_json = JSON.stringify(resolveEvidence(deps, task, input.evidence_card_ids));
+    // 结论与完成时刻一起落库：discussion_answered_at 回答“这次结论是什么时候给出的”，
+    // 不能靠 updated_at 推断（之后改标题也会刷新它）。
+    if (answer) {
+      patch.discussion_answer_md = answer;
+      patch.discussion_answered_at = now;
+    }
   }
   // 状态时间线：每个事件写自己的时刻，而不是依赖 updated_at。
   // 原因：updated_at 会被改名/改优先级等无关操作刷新，无法回答“什么时候开始干的”。

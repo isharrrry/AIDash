@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
-import type { Priority, TaskView } from '../types';
+import type { Priority, TaskKind, TaskView } from '../types';
 import { describeError } from '../api/client';
 import { createTask } from '../api/endpoints';
-import { fromLocalInput, parseTagInput } from '../lib/format';
+import { fromLocalInput, parseTagInput, TASK_KIND_LABELS } from '../lib/format';
 import { MarkdownEditor } from './MarkdownEditor';
 import { useToast } from './Toast';
 
@@ -19,13 +19,26 @@ export function TaskCreateForm({
   onCreated,
   onCancel,
 }: {
-  channelKey: string;
+  /** 目标通道：看板按通道取数，新建任务必然属于当前通道。 */
+  channelKey?: string;
   parents: TaskView[];
   onCreated: (task: TaskView) => void;
   onCancel: () => void;
 }): ReactElement {
   const notify = useToast().notify;
+  const activeChannelKey = channelKey ?? '';
+  // 父任务只能挂在同一通道下：跨通道父子关系服务端会拒绝，这里也不提供选项。
+  const sameChannelParents = parents.filter(
+    (task) => task.channel_key === activeChannelKey,
+  );
   const [title, setTitle] = useState('');
+  /**
+   * 任务类型。
+   *
+   * 默认 task（执行/改动）；讨论任务在网页上直接选“讨论”，
+   * harness 会按 task.md 里的讨论契约用大白话回答，而不是去改代码。
+   */
+  const [kind, setKind] = useState<TaskKind>('task');
   const [description, setDescription] = useState('');
   const [parentId, setParentId] = useState('');
   // 分类是单值归属，不是 tags；留空表示暂不分类。
@@ -46,6 +59,10 @@ export function TaskCreateForm({
       setError('标题不能为空');
       return;
     }
+    if (!activeChannelKey) {
+      setError('请选择一个通道');
+      return;
+    }
     if (editorBusy) {
       setError('图片仍在压缩，请等插入完成后再创建任务。');
       return;
@@ -54,10 +71,11 @@ export function TaskCreateForm({
     setError(null);
     try {
       const result = await createTask({
-        channel_key: channelKey,
+        channel_key: activeChannelKey,
         title: title.trim(),
         description_md: description.trim() ? description : null,
         parent_id: parentId || null,
+        kind,
         category: category.trim() || null,
         priority,
         assignee: assignee.trim() || null,
@@ -86,7 +104,9 @@ export function TaskCreateForm({
     <form className="panel create-task" onSubmit={(event) => void submitForm(event)}>
       <header className="panel-header">
         <h3>新建任务</h3>
-        <span className="muted small">通道 {channelKey}</span>
+        <span className="muted small">
+          通道 {activeChannelKey || '未选择'}
+        </span>
       </header>
 
       <div className="form-grid">
@@ -101,10 +121,33 @@ export function TaskCreateForm({
         </label>
 
         <label className="field">
+          <span>类型</span>
+          <select
+            aria-label="任务类型"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as TaskKind)}
+          >
+            <option value="task">{TASK_KIND_LABELS.task}（执行 / 改动）</option>
+            <option value="suggestion">{TASK_KIND_LABELS.suggestion}（等用户批准）</option>
+            <option value="discussion">{TASK_KIND_LABELS.discussion}（以回答为主）</option>
+          </select>
+        </label>
+
+        {kind === 'discussion' ? (
+          <p className="muted small field-full">
+            讨论任务的重点是用大白话回答问题；创建后可继续在详情页批量拆成多个待认领的子讨论。
+          </p>
+        ) : null}
+
+        <label className="field">
           <span>父任务</span>
-          <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
+          <select
+            aria-label="父任务"
+            value={parentId}
+            onChange={(event) => setParentId(event.target.value)}
+          >
             <option value="">（根任务）</option>
-            {parents.map((task) => (
+            {sameChannelParents.map((task) => (
               <option key={task.id} value={task.id}>
                 {task.path} · {task.title}
               </option>

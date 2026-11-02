@@ -147,6 +147,7 @@ export class ChannelRepo {
       card_count: number;
       task_count: number;
       open_task_count: number;
+      active_task_count: number;
       last_active_at: number | null;
     }
   > {
@@ -189,6 +190,10 @@ export class ChannelRepo {
                 (SELECT COUNT(*) FROM task t
                   WHERE t.channel_id = c.id
                     AND t.status IN ('pending','claimed','in_progress','blocked')) AS open_task_count,
+                -- 只有真正开始执行的 in_progress 任务才算“agent 在干活”：
+                -- pending 只是排期，claimed 可能还没跑到 start，不能据此宣称在线。
+                (SELECT COUNT(*) FROM task t
+                  WHERE t.channel_id = c.id AND t.status = 'in_progress') AS active_task_count,
                 (SELECT MAX(cd.created_at) FROM card cd WHERE cd.channel_id = c.id) AS last_card_at
          FROM channel c
          ${whereSql}
@@ -200,6 +205,7 @@ export class ChannelRepo {
         card_count: number;
         task_count: number;
         open_task_count: number;
+        active_task_count: number;
         last_card_at: number | null;
       }
     >;
@@ -217,6 +223,20 @@ export class ChannelRepo {
       total,
       has_more: page * pageSize < total,
     };
+  }
+
+  /**
+   * 单条通道的“正在执行任务”数。
+   *
+   * list() 已用子查询带回 active_task_count；setStatus/setAlias 这类单条视图
+   * 没有走聚合查询，用它补齐，保证两个入口对 agent_online/agent_busy 的判定一致。
+   */
+  countActiveTasks(channelId: string): number {
+    return (
+      this.db
+        .prepare("SELECT COUNT(*) AS n FROM task WHERE channel_id = ? AND status = 'in_progress'")
+        .get(channelId) as { n: number }
+    ).n;
   }
 
   countActive(): number {

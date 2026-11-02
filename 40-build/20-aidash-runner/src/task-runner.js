@@ -1,5 +1,6 @@
 import { errorMessage, isAuthError } from './errors.js';
 import { buildChildEnv, executeCommand } from './exec.js';
+import { ConsoleMarkdown, supportsColor } from './console-md.js';
 import { RETRY_MAX_ATTEMPTS, callWithRetry } from './retry.js';
 import { StreamTextDecoder } from './stream-decoder.js';
 import {
@@ -18,9 +19,11 @@ import {
   buildFailReason,
   buildIdempotencyKey,
   buildStatusCard,
+  resultFileIssueLabel,
 } from './report.js';
 import {
-  readResultFile,
+  readResultFileForTask,
+  snapshotResultFile,
   substitutePlaceholders,
   taskStdin,
   writeTaskFiles,
@@ -32,6 +35,19 @@ import {
   prepareClaudeFallback,
   prepareClaudeInvocation,
 } from './claude-session.js';
+
+const TASK_TITLE_LOG_LIMIT = 40;
+const TASK_ID_LOG_TAIL = 8;
+
+/** 日志里的任务标签：标题 + id 尾号，避免前台只看到一串看不懂的 id。 */
+function taskLogLabel(task) {
+  const id = String(task?.id ?? '');
+  const title = typeof task?.title === 'string' ? task.title.replace(/\s+/g, ' ').trim() : '';
+  if (!title) return `任务 ${id}`;
+  const short = title.length > TASK_TITLE_LOG_LIMIT ? `${title.slice(0, TASK_TITLE_LOG_LIMIT)}…` : title;
+  const tail = id.length > TASK_ID_LOG_TAIL ? `…${id.slice(-TASK_ID_LOG_TAIL)}` : id;
+  return `任务「${short}」（${tail}）`;
+}
 
 /**
  * 单个已认领任务的执行与回报。
@@ -79,13 +95,19 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     }
 
     try {
-      taskFiles = writeTaskFiles(details, { baseDir: ctx.tempDir ?? undefined });
+      taskFiles = writeTaskFiles(details, {
+        baseDir: ctx.tempDir ?? undefined,
+        resultFileTemplate: rule.run.result_file,
+      });
     } catch (error) {
       const reason = `任务文件写入失败：${errorMessage(error)}`;
-      ctx.logger.warn(`任务 ${task.id} ${reason}`);
+      ctx.logger.warn(`${taskLogLabel(task)} ${reason}`);
       await releaseQuietly(ctx, task.id, claim.token, reason);
       return { outcome: 'released', error };
     }
+    // 执行前先记下结果文件的样子：执行后如果 mtime+size 都没变，说明 harness
+    // 根本没写（或写到了别处），绝不能把上一次任务留下的内容当成这次的结果。
+    const resultBaseline = snapshotResultFile(taskFiles.resultPath);
 
     try {
       await ctx.client.call(
@@ -101,13 +123,19 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     }
 
     ctx.state.setBusy(true, { task_id: task.id, title: task.title, started_at: new Date().toISOString() });
+    // 状态切换立即上报：服务端据此把注册表从“空闲在线”切到“运行中”，
+    // 不用等下一个 60 秒心跳。
+    ctx.heartbeatNow?.();
     stopRenewal = startLeaseRenewal(ctx, task.id, claim.token, loseLease, failAuth);
 
     const config = ctx.getConfig();
-    const env = buildTaskEnv(config, task, rule);
+    const env = buildTaskEnv(config, task, rule, { resultPath: taskFiles.resultPath });
     const rawArgv = substitutePlaceholders(rule.run.argv, taskFiles);
     const rawShell = rule.run.shell === true;
-    const stdinPayload = rule.run.input === 'stdin' ? taskStdin(details, rule.run.stdin) : null;
+    const stdinPayload =
+      rule.run.input === 'stdin'
+        ? taskStdin(details, rule.run.stdin, { resultPath: taskFiles.resultPath })
+        : null;
     let invocation = prepareClaudeInvocation({
       engine: ctx.resumeEngine,
       argv: rawArgv,
@@ -118,9 +146,10 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     });
 
     ctx.logger.info(
-      `任务 ${task.id} 开始执行：${rawArgv[0] ?? ''}${rawArgv.length > 1 ? ' …' : ''}` +
+      `${taskLogLabel(task)} 开始执行：${rawArgv[0] ?? ''}${rawArgv.length > 1 ? ' …' : ''}` +
         `${invocation.mode === 'resume' ? '（续接 Claude 会话）' : ''}`,
     );
+    const runStartedAt = Date.now();
     let attempt = await executeHarnessAttempt({
       ctx,
       task,
@@ -147,7 +176,7 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     ) {
       earlierAttemptStarted = attempt.execResult.started === true;
       ctx.logger.warn(
-        `任务 ${task.id} Claude 会话续接失败（会话不存在）：已清除旧会话，回退一次不带 --resume 的执行`,
+        `${taskLogLabel(task)} Claude 会话续接失败（会话不存在）：已清除旧会话，回退一次不带 --resume 的执行`,
       );
       invocation = prepareClaudeFallback({
         argv: rawArgv,
@@ -176,7 +205,7 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     if (authError) throw authError;
     if (leaseLost) {
       ctx.logger.warn(
-        `任务 ${task.id} 租约丢失：已终止命令且不 release（避免覆盖新认领方）；任务将由服务端按租约回收`,
+        `${taskLogLabel(task)} 租约丢失：已终止命令且不 release（避免覆盖新认领方）；任务将由服务端按租约回收`,
       );
       return { outcome: 'lease_lost' };
     }
@@ -210,25 +239,50 @@ export async function runClaimedTask(ctx, task, rule, claim) {
       // Claude resume 失败后已经跑过一次命令，只是回退进程没起来：
       // 绝不能 release，否则会把“执行过”的任务重新放回队列造成重复执行。
       ctx.logger.warn(
-        `任务 ${task.id} 回退执行未启动，但前面的 resume 尝试已执行过：不 release，避免重复执行`,
+        `${taskLogLabel(task)} 回退执行未启动，但前面的 resume 尝试已执行过：不 release，避免重复执行`,
       );
     }
 
     if (!canReport(true, abortReason)) {
       ctx.logger.warn(
-        `任务 ${task.id} 命令已执行但值守壳正在停止（${abortReason}）：不 release、不回报，租约到期后由服务端回收`,
+        `${taskLogLabel(task)} 命令已执行但值守壳正在停止（${abortReason}）：不 release、不回报，租约到期后由服务端回收`,
       );
       return { outcome: 'aborted' };
     }
 
-    const resultFile = rule.run.result_file ? readResultFile(rule.run.result_file) : null;
-    const { commandSucceeded, result } = classifyCommandOutcome(execView, resultFile);
+    // 只接受“本次执行写出来的”结果文件：
+    // - 执行前不存在、执行后存在 → 是这次写的；
+    // - 执行前已存在但 mtime+size 没变 → 不是这次写的，忽略；
+    // - 结果 JSON 带 task_id 且与当前任务不一致 → 是别的任务写的，忽略。
+    const resultRead = taskFiles.resultPath
+      ? readResultFileForTask(taskFiles.resultPath, {
+          sinceMs: runStartedAt,
+          taskId: task.id,
+          baseline: resultBaseline,
+        })
+      : { file: null, issue: 'unconfigured', path: null };
+    const resultFile = resultRead.file;
+    logResultFileIssue(ctx, task, resultRead);
+    let { commandSucceeded, result } = classifyCommandOutcome(execView, resultFile);
+    // 讨论任务的“证据”就是结论本身：结果文件缺失或被判为别人的/旧的时，
+    // 不能因为进程退出码 0 就把任务标成功——那会让任务看起来已完成却没有答案。
+    if (
+      details.kind === 'discussion' &&
+      commandSucceeded &&
+      result === 'success' &&
+      resultRead.issue &&
+      resultRead.issue !== 'unconfigured'
+    ) {
+      result = 'blocked';
+      ctx.logger.warn(`${taskLogLabel(task)} 讨论任务没有可用的结果文件，按 blocked 回报`);
+    }
     const finalized = await finalizeTask(ctx, {
       task,
       rule,
       claim,
       execView,
       resultFile,
+      resultFileInfo: resultRead,
       commandSucceeded,
       result,
     });
@@ -244,6 +298,9 @@ export async function runClaimedTask(ctx, task, rule, claim) {
     forwarder?.flush();
     taskFiles?.cleanup();
     ctx.state.setBusy(false, null);
+    // 结束也要立即报 idle：否则任务已经回报完成，页面还会继续显示“运行中”
+    // 直到下一拍心跳，看起来像卡住了。
+    ctx.heartbeatNow?.();
     ctx.signal.removeEventListener('abort', onOuterAbort);
   }
 }
@@ -290,12 +347,31 @@ async function fetchTaskDetails(ctx, task, claim) {
     }
   } catch (error) {
     if (isAuthError(error)) throw error;
-    ctx.logger.warn(`任务 ${task.id} 详情读取失败，使用 claim 返回的字段：${errorMessage(error)}`);
+    ctx.logger.warn(`${taskLogLabel(task)} 详情读取失败，使用 claim 返回的字段：${errorMessage(error)}`);
   }
   return { ...task, ...(claim.task ?? {}) };
 }
 
-async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, commandSucceeded, result }) {
+/**
+ * 结果文件不可用时要留下可排查的日志。
+ *
+ * 不能静默忽略：用户看到证据卡里只有“命令执行成功”而没有 harness 结论时，
+ * 需要能从日志直接知道是没写、写旧了，还是写成了别的任务。
+ */
+function logResultFileIssue(ctx, task, info) {
+  if (!info?.issue || info.issue === 'unconfigured') return;
+  const suffix = info.path ? ` ${info.path}` : '';
+  if (info.issue === 'missing') {
+    ctx.logger.warn(`${taskLogLabel(task)} 未找到本次执行的结果文件${suffix}：证据摘要回退到命令退出信息`);
+    return;
+  }
+  ctx.logger.warn(`${taskLogLabel(task)} 已忽略结果文件${suffix}：${resultFileIssueLabel(info)}`);
+}
+
+async function finalizeTask(
+  ctx,
+  { task, rule, claim, execView, resultFile, resultFileInfo, commandSucceeded, result },
+) {
   const idempotencyKey = buildIdempotencyKey(task.id, claim.token);
   const cardInput = buildStatusCard({
     task,
@@ -303,6 +379,7 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
     cwd: rule.run.cwd,
     execResult: execView,
     resultFile,
+    resultFileInfo,
     logFile: ctx.logFile,
     idempotencyKey,
     result,
@@ -313,7 +390,7 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
     // 证据卡带 claim_token 派生的 idempotency_key，重发不会产生第二张卡。
     const posted = await callReportingWithRetry(
       ctx,
-      `任务 ${task.id} 证据卡发送`,
+      `${taskLogLabel(task)} 证据卡发送`,
       () => ctx.client.call('card.post', cardInput, { timeoutMs: 30_000 }),
     );
     cardId = parseCardId(posted);
@@ -323,10 +400,17 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
   }
 
   if (result === 'success') {
+    // 讨论任务的结论要落到任务详情页，供用户查看、并被下级讨论当作父级上下文。
+    // detail_md 是完整回答，优先级高于一句话 summary；两者都为空就不传，
+    // 避免把空字符串写成“已有结论”。失败/阻塞路径不写 answer。
+    const answerMd =
+      task.kind === 'discussion'
+        ? resultFile?.detail_md?.trim() || resultFile?.summary?.trim() || ''
+        : '';
     try {
       await callReportingWithRetry(
         ctx,
-        `任务 ${task.id} 完成回报（complete）`,
+        `${taskLogLabel(task)} 完成回报（complete）`,
         () =>
           ctx.client.call(
             'task.update',
@@ -335,11 +419,12 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
               event: 'complete',
               claim_token: claim.token,
               evidence_card_ids: [cardId],
+              ...(answerMd ? { answer_md: answerMd } : {}),
             },
             { timeoutMs: 20_000 },
           ),
       );
-      ctx.logger.info(`任务 ${task.id} 已完成（证据卡 ${cardId}）`);
+      ctx.logger.info(`${taskLogLabel(task)} 已完成（证据卡 ${cardId}）`);
       return { outcome: 'completed', cardId };
     } catch (error) {
       if (isAuthError(error)) throw error;
@@ -357,7 +442,7 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
     try {
       await callReportingWithRetry(
         ctx,
-        `任务 ${task.id} 失败回报（fail）`,
+        `${taskLogLabel(task)} 失败回报（fail）`,
         () =>
           ctx.client.call(
             'task.update',
@@ -374,7 +459,7 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
             { timeoutMs: 20_000 },
           ),
       );
-      ctx.logger.info(`任务 ${task.id} 已标记失败（证据卡 ${cardId}）`);
+      ctx.logger.info(`${taskLogLabel(task)} 已标记失败（证据卡 ${cardId}）`);
       return { outcome: 'failed', cardId };
     } catch (error) {
       if (isAuthError(error)) throw error;
@@ -386,13 +471,17 @@ async function finalizeTask(ctx, { task, rule, claim, execView, resultFile, comm
   // blocked / partial：harness 明确表示需要人工接手或只完成一部分。
   const reason =
     resultFile?.summary?.trim() ||
-    (result === 'partial' ? `命令部分完成：${cardInput.summary}` : `harness 报告需要人工处理：${cardInput.summary}`);
+    (task.kind === 'discussion' && resultFileInfo?.issue && resultFileInfo.issue !== 'unconfigured'
+      ? `讨论任务未产出可用的结果文件：${resultFileIssueLabel(resultFileInfo)}`
+      : result === 'partial'
+        ? `命令部分完成：${cardInput.summary}`
+        : `harness 报告需要人工处理：${cardInput.summary}`);
   const blocked = await tryBlock(ctx, task.id, claim.token, reason);
   return blocked ? { outcome: 'blocked', cardId } : { outcome: 'report_failed', cardId };
 }
 
 async function handleCardFailure(ctx, task, claimToken, commandSucceeded, error) {
-  ctx.logger.warn(`任务 ${task.id} 证据卡发送失败：${errorMessage(error)}`);
+  ctx.logger.warn(`${taskLogLabel(task)} 证据卡发送失败：${errorMessage(error)}`);
   const action = evidenceFailureAction(commandSucceeded);
   const reason = buildEvidenceFailureReason(commandSucceeded, errorMessage(error));
   if (action === 'block') {
@@ -544,7 +633,7 @@ async function executeHarnessAttempt({ ctx, task, rule, env, argv, shell, stdinP
   return { execResult, forwarder };
 }
 
-function buildTaskEnv(config, task, rule) {
+function buildTaskEnv(config, task, rule, { resultPath = null } = {}) {
   const passthrough = [...config.env_passthrough, ...rule.run.env_passthrough];
   return buildChildEnv({
     passthrough,
@@ -555,6 +644,8 @@ function buildTaskEnv(config, task, rule) {
       AIDASH_TASK_ID: task.id,
       AIDASH_TASK_TITLE: task.title,
       AIDASH_CHANNEL_KEY: task.channel_key,
+      // 给脚本/包装器一个不依赖提示词的出口；没有配置结果文件时不注入空值。
+      ...(resultPath ? { AIDASH_RESULT_FILE: resultPath } : {}),
     },
   });
 }
@@ -575,6 +666,29 @@ function createOutputForwarder(ctx, task) {
   const prefix = ctx.noPrefix ? '' : `[${task.id}] `;
   let stderrHead = '';
   let stdoutHead = '';
+  let prefixPending = prefix !== '';
+  let flushed = false;
+
+  // 只在“前台 + 真终端 + 非 JSON + 未关渲染”时把 stdout 当 Markdown 画到终端。
+  // 日志文件、证据卡、重定向/管道仍保存原文：机器读的东西不该混进 ANSI。
+  const markdown =
+    ctx.foreground === true &&
+    ctx.json !== true &&
+    ctx.renderMarkdown !== false &&
+    process.stdout.isTTY === true
+      ? new ConsoleMarkdown({
+          color: supportsColor(process.stdout),
+          columns: process.stdout.columns,
+        })
+      : null;
+
+  const writeTerminal = (target, text) => {
+    try {
+      target.write(text);
+    } catch {
+      // 终端已关闭；日志文件仍有记录。
+    }
+  };
 
   const consume = (stream, text) => {
     if (!text) return;
@@ -585,16 +699,18 @@ function createOutputForwarder(ctx, task) {
     if (stream === 'stdout' && stdoutHead.length < 2_000) {
       stdoutHead += text.slice(0, 2_000 - stdoutHead.length);
     }
-    const safe = redact(`${prefix}${text}`);
-    ctx.logger.writeRaw(safe);
-    if (ctx.foreground && !ctx.json) {
-      const target = stream === 'stdout' ? process.stdout : process.stderr;
-      try {
-        target.write(safe);
-      } catch {
-        // 终端已关闭；日志文件仍有记录。
-      }
+    const safe = redact(text);
+    ctx.logger.writeRaw(prefix ? `${prefix}${safe}` : safe);
+    if (!ctx.foreground || ctx.json) return;
+
+    if (stream === 'stdout' && markdown) {
+      const rendered = markdown.push(safe);
+      if (!rendered) return;
+      writeTerminal(process.stdout, prefixPending ? `${prefix}${rendered}` : rendered);
+      prefixPending = false;
+      return;
     }
+    writeTerminal(stream === 'stderr' ? process.stderr : process.stdout, prefix ? `${prefix}${safe}` : safe);
   };
 
   const onOutput = (stream, chunk) => {
@@ -602,10 +718,23 @@ function createOutputForwarder(ctx, task) {
     consume(stream, decoder.write(chunk));
   };
 
+  // executeHarnessAttempt 收尾和 runClaimedTask 的 finally 都会调用 flush，
+  // 只允许真正冲刷一次；否则 Markdown 渲染器会被 end() 两次。
   const flush = () => {
+    if (flushed) return;
+    flushed = true;
     for (const stream of ['stdout', 'stderr']) {
       const rest = decoders[stream].end();
       if (rest) consume(stream, rest);
+    }
+    if (markdown) {
+      const tail = markdown.end();
+      if (tail) {
+        // harness 可能不写末尾换行；终端渲染补一个，避免后续日志/汇总贴在同一行。
+        const shown = tail.endsWith('\n') ? tail : `${tail}\n`;
+        writeTerminal(process.stdout, prefixPending ? `${prefix}${shown}` : shown);
+        prefixPending = false;
+      }
     }
   };
 

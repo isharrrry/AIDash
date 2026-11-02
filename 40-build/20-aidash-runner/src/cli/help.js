@@ -56,6 +56,7 @@ start 选项:
   --log-file <path>     日志文件；默认 <data-dir>/logs/<instance_id>.log
   --data-dir <path>     实例数据目录；默认 ~/.aidash/runner
   --no-prefix           子进程输出不加 [task_id] 前缀
+  --no-md               关闭前台终端的 Markdown 渲染，harness stdout 原样输出
   --json                机器可读输出（stdout 仅一个 JSON 信封）
 
 通用:

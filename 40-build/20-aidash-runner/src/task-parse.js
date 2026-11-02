@@ -1,5 +1,5 @@
 import { BusinessError, TransportError } from './errors.js';
-import { asRecord, asString, asStringArray } from './util.js';
+import { asFiniteNumber, asRecord, asString, asStringArray } from './util.js';
 
 /**
  * 服务端返回的是不可信 JSON：字段可能缺失、可能换信封。
@@ -23,10 +23,51 @@ export function parseTask(value, source = 'task') {
     claim_expires_at: asString(record.claim_expires_at),
     due_at: asString(record.due_at),
     kind: asString(record.kind) ?? 'task',
+    parent_id: asString(record.parent_id),
     description_md: typeof record.description_md === 'string' ? record.description_md : null,
+    discussion_answer_md:
+      typeof record.discussion_answer_md === 'string' ? record.discussion_answer_md : null,
+    ancestors: parseAncestors(record.ancestors),
     defer_reason: asString(record.defer_reason) ?? '',
     deferred_until: asString(record.deferred_until),
     created_at: asString(record.created_at),
+  };
+}
+
+/**
+ * 父链上下文（根 → 直接父）。服务端字段同样是不可信 JSON：
+ * - ancestors 不是数组时按“没有上下文”处理，不让提示词里出现 `[object Object]`；
+ * - 非对象条目直接丢弃，避免把字符串/数字当成祖先渲染；
+ * - depth 缺失时按数组顺序倒推（最后一项是直接父=1），服务端正常都会显式给值。
+ */
+function parseAncestors(value) {
+  if (!Array.isArray(value)) return [];
+  const total = value.length;
+  const parsed = [];
+  value.forEach((item, index) => {
+    const ancestor = parseAncestor(item, Math.max(1, total - index));
+    if (ancestor) parsed.push(ancestor);
+  });
+  return parsed;
+}
+
+/** 单个祖先视图的安全收窄；不是对象就返回 null，由调用方丢弃。 */
+export function parseAncestor(value, fallbackDepth = 1) {
+  const record = asRecord(value);
+  if (!record) return null;
+  const id = asString(record.id) ?? '';
+  const rawDepth = asFiniteNumber(record.depth);
+  const depth = Number.isInteger(rawDepth) && rawDepth > 0 ? rawDepth : fallbackDepth;
+  return {
+    id,
+    title: asString(record.title) ?? id,
+    kind: asString(record.kind) ?? 'task',
+    // 不用 pending 兜底：祖先缺状态时不能假装它还在排队，unknown 更诚实。
+    status: asString(record.status) ?? 'unknown',
+    depth,
+    description_md: typeof record.description_md === 'string' ? record.description_md : null,
+    discussion_answer_md:
+      typeof record.discussion_answer_md === 'string' ? record.discussion_answer_md : null,
   };
 }
 

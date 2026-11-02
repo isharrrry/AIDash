@@ -72,6 +72,8 @@ const TASK_COLUMNS = [
   'risk_flagged_at',
   'risk_resolved_at',
   'risk_resolution',
+  'discussion_answer_md',
+  'discussion_answered_at',
   'evidence_json',
   'idempotency_key',
   'created_by',
@@ -79,10 +81,17 @@ const TASK_COLUMNS = [
   'updated_at',
 ] as const;
 
-/** 生成 SELECT 投影：不需要正文时把 description_md 换成常量 NULL，避免读取大字段。 */
+/**
+ * 生成 SELECT 投影：不需要正文时把大文本列换成常量 NULL，避免读取大字段。
+ *
+ * discussion_answer_md 与 description_md 一样可能内嵌 base64 截图（上限 2,000,000 字符）；
+ * 列表/树会被 Web 周期性轮询，不能为了一个默认不展示的结论把每条任务的全文读进 Node 堆。
+ */
 function taskColumns(includeDescription: boolean): string {
   return TASK_COLUMNS.map((column) =>
-    column === 'description_md' && !includeDescription ? 'NULL AS description_md' : column,
+    (column === 'description_md' || column === 'discussion_answer_md') && !includeDescription
+      ? `NULL AS ${column}`
+      : column,
   ).join(', ');
 }
 
@@ -123,8 +132,9 @@ export class TaskRepo {
           blocked_reason, fail_reason, cancel_reason, end_notice_read_at,
           defer_reason, deferred_at, deferred_until,
           risk_note, risk_flagged_at, risk_resolved_at, risk_resolution,
+          discussion_answer_md, discussion_answered_at,
           evidence_json, idempotency_key, created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         task.id,
@@ -161,6 +171,8 @@ export class TaskRepo {
         task.risk_flagged_at,
         task.risk_resolved_at,
         task.risk_resolution,
+        task.discussion_answer_md,
+        task.discussion_answered_at,
         task.evidence_json,
         task.idempotency_key,
         task.created_by,
@@ -202,6 +214,8 @@ export class TaskRepo {
       'risk_flagged_at',
       'risk_resolved_at',
       'risk_resolution',
+      'discussion_answer_md',
+      'discussion_answered_at',
       'evidence_json',
       'updated_at',
     ]);
@@ -420,7 +434,7 @@ export class TaskRepo {
   /**
    * 通道内全量任务建树；单通道任务量在千级，内存建树比递归查询更简单。
    *
-   * 默认不把 description_md 带进树：描述里可能内嵌 base64 截图，
+   * 默认不把 description_md / discussion_answer_md 带进树：两者都可能内嵌 base64 截图，
    * 一棵几十个节点的树如果每个节点都带正文，一次轮询就是几 MB。
    */
   tree(channelId: string, includeDescription = false): TreeNode[] {
@@ -519,6 +533,9 @@ export function toTaskView(
     risk_flagged_at: toIsoOrNull(task.risk_flagged_at),
     risk_resolved_at: toIsoOrNull(task.risk_resolved_at),
     risk_resolution: task.risk_resolution,
+    // 讨论结论只在详情/写操作响应里原样返回；列表与树不附带（见 taskColumns 的正文省略策略）。
+    discussion_answer_md: task.discussion_answer_md,
+    discussion_answered_at: toIsoOrNull(task.discussion_answered_at),
     evidence_ids: parseJsonArray(task.evidence_json),
     unread_count: unreadCount,
     created_at: new Date(task.created_at).toISOString(),

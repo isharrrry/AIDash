@@ -44,12 +44,14 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 /**
- * 任务类型文案。普通任务不展示类型徽标（默认形态不需要标签），
- * 只有“建议”需要在任务树里一眼区分出来。
+ * 任务类型文案。任务树保留独立的“类型”列，三种类型都要有稳定文案：
+ * 普通任务显示“任务”比留空更不容易被误读成渲染丢失；
+ * 讨论任务用“讨论”标签，提示它的产出是回答而不是代码改动。
  */
 export const TASK_KIND_LABELS: Record<TaskKind, string> = {
   task: '任务',
   suggestion: '建议',
+  discussion: '讨论',
 };
 
 export const ENRICHMENT_LABELS: Record<EnrichmentStatus, string> = {

@@ -57,4 +57,29 @@ describe('Markdown 解析', () => {
     const blocks = parseMarkdown('条件 A | 条件 B 同时成立时继续。');
     expect(blocks).toEqual([{ kind: 'paragraph', text: '条件 A | 条件 B 同时成立时继续。' }]);
   });
+
+  it('分隔行每列只写两个短横线（`| :-- |`）时仍识别为表格', () => {
+    // 真实回归：harness 汇报里的 P0/P1 表写的是 `| :-- | :-- |`（每列 2 个短横线）。
+    // GFM 规范要 3 个，但只认 3 个会把整张表退化成一段带竖线的文字——
+    // 用户看到的就是“没有表格、行也不换行”。
+    const blocks = parseMarkdown(
+      [
+        '| 编号 | 缺口 | 证据 |',
+        '| :-- | :-- | :-- |',
+        '| P0-1 | 线上格式只覆盖 3 个负载 | 04 §5.12 |',
+      ].join('\n'),
+    );
+    expect(blocks).toEqual([
+      {
+        kind: 'table',
+        header: ['编号', '缺口', '证据'],
+        rows: [['P0-1', '线上格式只覆盖 3 个负载', '04 §5.12']],
+      },
+    ]);
+  });
+
+  it('分隔行写成 `|:-:|`（1 个短横线加两端冒号）也识别为表格', () => {
+    const blocks = parseMarkdown(['| a | b |', '|:-:|:-:|', '| 1 | 2 |'].join('\n'));
+    expect(blocks).toEqual([{ kind: 'table', header: ['a', 'b'], rows: [['1', '2']] }]);
+  });
 });

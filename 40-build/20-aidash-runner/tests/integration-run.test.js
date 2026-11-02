@@ -260,6 +260,8 @@ test('once：执行任务、过滤令牌环境、发证据卡并 complete', asyn
     assert.deepEqual(events, ['start', 'complete']);
     const complete = fake.callsFor('task.update').find((call) => call.args.event === 'complete');
     assert.equal(complete.args.evidence_card_ids.length, 1);
+    // 非讨论任务不应该带讨论结论字段。
+    assert.equal('answer_md' in complete.args, false);
     assert.equal(fake.callsFor('task.release').length, 0);
     assert.equal(fake.cards.length, 1);
 
@@ -277,7 +279,7 @@ test('once：执行任务、过滤令牌环境、发证据卡并 complete', asyn
     assert.match(card.detail_md, /ACCESS_KEY=\*\*\*/);
 
     const log = fs.readFileSync(ctx.logFile, 'utf8');
-    assert.match(log, /任务 .*开始执行/);
+    assert.match(log, /任务「Once 任务」.*开始执行/);
     assert.match(log, /已完成/);
     assert.match(log, /Bearer \*\*\*/);
     assert.match(log, /ACCESS_KEY=\*\*\*/);
@@ -652,6 +654,179 @@ test('命令失败 → failed 卡 + fail，且不 release；result_file=blocked 
   }
 });
 
+test('结果文件没被本次任务更新时，不把上一个任务的结论当证据', async () => {
+  const taskA = makeTask({ id: 'task-result-a', title: '任务A', tags: ['it'] });
+  const taskB = makeTask({ id: 'task-result-b', title: '任务B', tags: ['it'] });
+  const fake = await new FakeAidash({ tasks: [taskA, taskB] }).start();
+  const ctx = makeContext();
+  const resultFile = path.join(ctx.dir, 'shared-result.json');
+  // 结果正文放在独立文件里，避免它出现在命令行（证据卡会回显命令）造成误判。
+  const resultA = path.join(ctx.dir, 'result-a.json');
+  fs.writeFileSync(
+    resultA,
+    JSON.stringify({ summary: '任务A的结论', detail_md: 'A 的正文', result: 'success', task_id: taskA.id }),
+  );
+  // 只有任务 A 会写结果；任务 B 什么都不写，模拟“harness 写到了别处”。
+  const script = [
+    "const fs=require('node:fs');",
+    `if(process.env.AIDASH_TASK_ID==='${taskA.id}'){`,
+    '  fs.copyFileSync(process.argv[2],process.argv[1]);',
+    '}',
+  ].join('');
+  try {
+    const configPath = writeRunnerConfig(ctx, fake, {
+      commands: [
+        makeRule({ argv: nodeScript(script, resultFile, resultA), run: { result_file: resultFile } }),
+      ],
+    });
+
+    const first = await runCli(
+      ['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json', '--log-file', ctx.logFile],
+      ctx.opts(),
+    );
+    assert.equal(first.code, 0, first.stderr);
+    assert.equal(first.json.data.last_task.outcome, 'completed');
+    assert.equal(fake.cards[0].summary, '任务A的结论');
+
+    const second = await runCli(
+      ['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json', '--log-file', ctx.logFile],
+      ctx.opts(),
+    );
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(second.json.data.last_task.outcome, 'completed');
+    const cardB = fake.cards[1];
+    assert.ok(cardB, '任务 B 必须发出证据卡');
+    assert.equal(cardB.summary.includes('任务A的结论'), false);
+    assert.equal(cardB.detail_md.includes('A 的正文'), false);
+    assert.match(cardB.summary, /命令执行成功/);
+    assert.match(cardB.detail_md, /结果文件/);
+    assert.match(cardB.detail_md, /没有更新/);
+    assert.match(fs.readFileSync(ctx.logFile, 'utf8'), /已忽略结果文件/);
+  } finally {
+    await fake.stop();
+  }
+});
+
+test('结果文件 task_id 属于别的任务时忽略，证据卡回退到命令结果', async () => {
+  const task = makeTask({ id: 'task-result-foreign', tags: ['it'] });
+  const fake = await new FakeAidash({ tasks: [task] }).start();
+  const ctx = makeContext();
+  const resultFile = path.join(ctx.dir, 'foreign-result.json');
+  const foreignResult = path.join(ctx.dir, 'foreign-source.json');
+  fs.writeFileSync(
+    foreignResult,
+    JSON.stringify({
+      summary: '另一个任务的结论',
+      detail_md: '别的任务正文',
+      result: 'success',
+      task_id: 'tk_someone_else',
+    }),
+  );
+  const script = "const fs=require('node:fs');fs.copyFileSync(process.argv[2],process.argv[1]);";
+  try {
+    const configPath = writeRunnerConfig(ctx, fake, {
+      commands: [
+        makeRule({ argv: nodeScript(script, resultFile, foreignResult), run: { result_file: resultFile } }),
+      ],
+    });
+    const result = await runCli(
+      ['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json', '--log-file', ctx.logFile],
+      ctx.opts(),
+    );
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.json.data.last_task.outcome, 'completed');
+    const card = fake.cards[0];
+    assert.match(card.summary, /命令执行成功/);
+    assert.equal(card.summary.includes('另一个任务的结论'), false);
+    assert.equal(card.detail_md.includes('别的任务正文'), false);
+    assert.match(card.detail_md, /文件属于任务 tk_someone_else/);
+    const log = fs.readFileSync(ctx.logFile, 'utf8');
+    assert.match(log, /已忽略结果文件/);
+    assert.match(log, /tk_someone_else/);
+  } finally {
+    await fake.stop();
+  }
+});
+
+test('讨论任务没有可用结果文件时 blocked，不拿旧文件冒充结论', async () => {
+  const task = makeTask({
+    id: 'task-discussion-nofile',
+    title: '没有结论的讨论',
+    tags: ['it'],
+    kind: 'discussion',
+  });
+  const fake = await new FakeAidash({ tasks: [task] }).start();
+  const ctx = makeContext();
+  const resultFile = path.join(ctx.dir, 'shared-discussion.json');
+  // 上一个任务留下的旧结论：讨论任务不能把它当成本次回答。
+  fs.writeFileSync(
+    resultFile,
+    JSON.stringify({ summary: '别的任务结论', detail_md: '别的任务正文', result: 'success', task_id: 'tk_old' }),
+  );
+  try {
+    const configPath = writeRunnerConfig(ctx, fake, {
+      commands: [
+        makeRule({ argv: nodeScript('process.exit(0)'), run: { result_file: resultFile } }),
+      ],
+    });
+    const result = await runCli(
+      ['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json', '--log-file', ctx.logFile],
+      ctx.opts(),
+    );
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.json.data.last_task.outcome, 'blocked');
+    assert.equal(fake.task(task.id).status, 'blocked');
+
+    const card = fake.cards[0];
+    assert.equal(card.result, 'blocked');
+    assert.equal(card.summary.includes('别的任务结论'), false);
+    assert.equal(card.detail_md.includes('别的任务正文'), false);
+    assert.match(card.detail_md, /没有讨论结论正文/);
+    const block = fake.callsFor('task.update').find((call) => call.args.event === 'block');
+    assert.match(block.args.reason, /讨论任务未产出可用的结果文件/);
+    assert.match(block.args.reason, /没有更新/);
+  } finally {
+    await fake.stop();
+  }
+});
+
+test('result_file 支持 {task_file_dir} 与 {result_file}：每次执行独立路径', async () => {
+  const task = makeTask({ id: 'task-result-isolated', tags: ['it'] });
+  const fake = await new FakeAidash({ tasks: [task] }).start();
+  const ctx = makeContext();
+  // 让 harness 把收到的结果路径写进 marker，并写入结果 JSON。
+  const marker = path.join(ctx.dir, 'result-path.txt');
+  const script = [
+    "const fs=require('node:fs');",
+    "fs.writeFileSync(process.argv[2],process.argv[1]);",
+    "const task=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));",
+    "fs.writeFileSync(process.argv[1],JSON.stringify({summary:'按任务落盘',detail_md:'独立路径',result:'success',task_id:task.id}));",
+  ].join('');
+  try {
+    const configPath = writeRunnerConfig(ctx, fake, {
+      commands: [
+        makeRule({
+          argv: nodeScript(script, '{result_file}', marker, '{task_file}'),
+          run: { result_file: '{task_file_dir}/result.json' },
+        }),
+      ],
+    });
+    const result = await runCli(['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json'], ctx.opts());
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.json.data.last_task.outcome, 'completed');
+    assert.equal(fake.cards[0].summary, '按任务落盘');
+    const writtenPath = fs.readFileSync(marker, 'utf8');
+    assert.equal(path.basename(writtenPath), 'result.json');
+    assert.notEqual(writtenPath, path.join(ctx.dir, 'result.json'));
+    assert.match(writtenPath, /aidash-runner-task-/);
+    // 任务结束即清理：临时目录里的结果文件不会长期留在系统临时目录。
+    assert.equal(fs.existsSync(writtenPath), false);
+    assert.match(fake.cards[0].detail_md, /本次执行写入/);
+  } finally {
+    await fake.stop();
+  }
+});
+
 test('租约丢失：终止命令、不 release、不发卡', async () => {
   const task = makeTask({ id: 'task-lease-lost', tags: ['it'] });
   const fake = await new FakeAidash({ tasks: [task] }).start();
@@ -701,6 +876,138 @@ test('claim 视图缺少 description 时用 task.list(include_description) 兜�
     assert.equal(detailLookups.length >= 1, true);
     assert.equal(fake.callsFor('card.post').length, 1);
   } finally {
+    await fake.stop();
+  }
+});
+
+test('讨论任务：task 文件带父链上下文，complete 带 answer_md，结论卡不含命令日志', async () => {
+  const rootAncestor = {
+    id: 'task-root',
+    title: '根问题',
+    kind: 'discussion',
+    status: 'done',
+    depth: 2,
+    description_md: '根问题正文',
+    discussion_answer_md: '根结论',
+  };
+  const parentAncestor = {
+    id: 'task-parent',
+    title: '父问题',
+    kind: 'task',
+    status: 'done',
+    depth: 1,
+    description_md: '父问题正文',
+    discussion_answer_md: null,
+  };
+  const task = makeTask({
+    id: 'task-discussion',
+    title: '该不该引入队列',
+    tags: ['it'],
+    kind: 'discussion',
+    parent_id: 'task-parent',
+    ancestors: [rootAncestor, parentAncestor],
+    description_md: '当前讨论问题正文',
+  });
+  const fake = await new FakeAidash({ tasks: [task] }).start();
+  const ctx = makeContext('aidash-run-discussion-');
+  const marker = path.join(ctx.dir, 'discussion.json');
+  const resultFile = path.join(ctx.dir, 'result.json');
+  const answer = '## 结论\n\n先别引入队列。\n\n理由：当前吞吐远未到瓶颈。';
+  const resultPayload = { summary: '结论：先别引入队列', detail_md: answer, result: 'success' };
+  try {
+    const script = [
+      "const fs=require('node:fs');",
+      'const [marker, taskFile, mdFile, resultFile]=process.argv.slice(1);',
+      "const task=JSON.parse(fs.readFileSync(taskFile,'utf8'));",
+      "const md=fs.readFileSync(mdFile,'utf8');",
+      'fs.writeFileSync(marker,JSON.stringify({task,md}));',
+      `fs.writeFileSync(resultFile,${JSON.stringify(JSON.stringify(resultPayload))});`,
+    ].join('');
+    const configPath = writeRunnerConfig(ctx, fake, {
+      commands: [
+        makeRule({
+          argv: nodeScript(script, marker, '{task_file}', '{task_md_file}', resultFile),
+          run: { result_file: resultFile },
+        }),
+      ],
+    });
+    const result = await runCli(
+      ['once', '--config', configPath, '--data-dir', ctx.dataDir, '--json'],
+      ctx.opts(),
+    );
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.json.data.last_task.outcome, 'completed');
+
+    // task.json / task.md 都要能直接读到父链上下文。
+    const written = readJson(marker);
+    assert.equal(written.task.kind, 'discussion');
+    assert.equal(written.task.parent_id, 'task-parent');
+    assert.equal(written.task.ancestors.length, 2);
+    assert.equal(written.task.ancestors[0].discussion_answer_md, '根结论');
+    assert.equal('claim_token' in written.task, false);
+    assert.match(written.md, /## 讨论任务/);
+    assert.match(written.md, /## 父级讨论上下文/);
+    assert.ok(written.md.indexOf('根问题') < written.md.indexOf('父问题'));
+
+    // evidence 卡照发，complete 额外带 answer_md（detail 优先）。
+    const complete = fake.callsFor('task.update').find((call) => call.args.event === 'complete');
+    assert.ok(complete, '讨论任务成功必须 complete');
+    assert.equal(complete.args.answer_md, answer);
+    assert.equal(complete.args.evidence_card_ids.length, 1);
+    assert.equal(fake.task(task.id).discussion_answer_md, answer);
+
+    assert.equal(fake.cards.length, 1);
+    const card = fake.cards[0];
+    assert.equal(card.title, '讨论「该不该引入队列」的结论');
+    assert.equal(card.summary, resultPayload.summary);
+    assert.equal(card.detail_md, answer);
+    assert.equal(card.detail_md.includes('### 命令'), false);
+    assert.equal(card.detail_md.includes('退出码'), false);
+    assert.equal(card.detail_md.includes('node'), false);
+  } finally {
+    await fake.stop();
+  }
+});
+
+test('长任务阻塞等待 harness 时心跳照常上报 busy', async () => {
+  const fake = await new FakeAidash().start();
+  const ctx = makeContext('aidash-run-heartbeat-');
+  const marker = path.join(ctx.dir, 'hb-slow.pid');
+  let child = null;
+  try {
+    const configPath = writeRunnerConfig(ctx, fake, {
+      overrides: { heartbeat_interval_seconds: 1 },
+      commands: [makeRule({ argv: nodeScript(slowScript(), marker) })],
+    });
+    child = spawnCli(['start', '--config', configPath, '--data-dir', ctx.dataDir, '--json'], ctx.opts());
+    const { entry } = await waitForRegistry(ctx.dataDir, 'it-runner');
+    await waitForStatus(entry, (status) => status.connected && status.registered, '实例连接并注册');
+
+    const task = makeTask({ id: 'task-heartbeat', tags: ['it'] });
+    fake.addTask(task);
+    const pull = await runCli(['pull', '--data-dir', ctx.dataDir, '--json'], ctx.opts());
+    assert.equal(pull.code, 0, pull.stderr);
+    await waitForStatus(entry, (status) => status.busy === true, '任务进入执行');
+    await waitFor(() => fs.existsSync(marker), { label: 'harness 子进程启动' });
+
+    // 任务仍在执行（in_progress），期间至少两拍 busy 心跳：证明 await 子进程
+    // 结果没有把心跳循环一起阻塞——这正是“长任务期间显示离线”的回归用例。
+    const busyBeats = () =>
+      fake.callsFor('harness.heartbeat').filter((call) => call.args.status_hint === 'busy').length;
+    await waitFor(() => busyBeats() >= 2, {
+      timeoutMs: 10_000,
+      label: '执行期间收到两拍 busy 心跳',
+    });
+    assert.equal(fake.task(task.id).status, 'in_progress');
+    const status = await getControlStatus(entry, { timeoutMs: 2_000 });
+    assert.equal(status.busy, true);
+    assert.equal(status.current_task?.task_id, task.id);
+
+    const stop = await runCli(['stop', '--data-dir', ctx.dataDir, '--json'], ctx.opts());
+    assert.equal(stop.code, 0);
+    await child.waitForExit(15_000);
+  } finally {
+    child?.dispose();
     await fake.stop();
   }
 });

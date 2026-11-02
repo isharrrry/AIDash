@@ -58,16 +58,16 @@
         "argv": [
           "node",
           "-e",
-          "const fs=require('node:fs');const t=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));fs.writeFileSync(process.argv[2],JSON.stringify({summary:'已处理 '+t.id,detail_md:'由示例规则生成',result:'success'}));",
+          "const fs=require('node:fs');const t=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));fs.writeFileSync(process.argv[2],JSON.stringify({summary:'已处理 '+t.id,detail_md:'由示例规则生成',result:'success',task_id:t.id}));",
           "{task_file}",
-          "aidash-runner-result.json"
+          "{result_file}"
         ],
         "cwd": ".",
         "input": "file",
         "timeout_seconds": 600,
         "env": {},
         "env_passthrough": [],
-        "result_file": "aidash-runner-result.json"
+        "result_file": "{task_file_dir}/result.json"
       }
     }
   ]

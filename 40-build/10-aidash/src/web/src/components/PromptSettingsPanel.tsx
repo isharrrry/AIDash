@@ -21,6 +21,9 @@ function draftsFrom(settings: SettingsView): Record<PromptKey, string> {
  *
  * “恢复默认”只改本地草稿，不立即写服务端：用户可能想先看看默认文案再决定，
  * 也可能一次恢复多个能力后统一保存。
+ *
+ * 每项用 details 折叠：四个 textarea 全展开会直接占掉几屏，用户要先滚很久
+ * 才能看到保存按钮之外的配置；默认只展开第一项，兼顾“马上可编辑”和页面高度。
  */
 export function PromptSettingsPanel({
   settings,
@@ -33,6 +36,11 @@ export function PromptSettingsPanel({
   const [drafts, setDrafts] = useState<Record<PromptKey, string>>(() => draftsFrom(settings));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // 用受控集合而不是给首个 details 写死 open：后者在每次输入引发重渲染时
+  // 会把用户手动展开/收起的项重新按初始值设置。
+  const [expanded, setExpanded] = useState<Set<PromptKey>>(
+    () => new Set(settings.prompts.slice(0, 1).map((prompt) => prompt.key)),
+  );
 
   // 外部刷新/保存成功后同步；用户有未保存草稿时不覆盖。
   useEffect(() => {
@@ -48,6 +56,15 @@ export function PromptSettingsPanel({
   const reset = (key: PromptKey, value: string): void => {
     setDirty(true);
     setDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const setOpen = (key: PromptKey, open: boolean): void => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   };
 
   const save = async (): Promise<void> => {
@@ -73,7 +90,7 @@ export function PromptSettingsPanel({
         <div>
           <h2>能力提示词</h2>
           <p className="muted small">
-            四种能力各有一套系统提示词；默认值已经可用，改坏可单条恢复。
+            四种能力各有一套系统提示词；默认只展开第一项，改坏可单条恢复。
           </p>
         </div>
         <button
@@ -94,40 +111,53 @@ export function PromptSettingsPanel({
         {settings.prompts.map((prompt) => {
           const draft = drafts[prompt.key] ?? '';
           const changed = draft !== prompt.default_system;
+          const overLimit = draft.length > MAX_PROMPT_CHARS;
           return (
-            <article key={prompt.key} className="prompt-item">
-              <header className="prompt-item-header">
-                <div>
-                  <h3>
-                    {prompt.label} <code className="muted small">{prompt.key}</code>
-                    {changed ? <span className="badge badge-leftover">已修改</span> : null}
-                  </h3>
-                  <p className="muted small">{prompt.description}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-small btn-ghost"
-                  disabled={saving || draft === prompt.default_system}
-                  onClick={() => reset(prompt.key, prompt.default_system)}
+            <details
+              key={prompt.key}
+              className="prompt-item"
+              open={expanded.has(prompt.key)}
+              onToggle={(event) => setOpen(prompt.key, event.currentTarget.open)}
+            >
+              <summary className="prompt-item-summary">
+                <span className="prompt-item-caret" aria-hidden="true">
+                  ▸
+                </span>
+                <strong>{prompt.label}</strong>
+                <code className="muted small">{prompt.key}</code>
+                {changed ? <span className="badge badge-leftover">已修改</span> : null}
+                <span
+                  className={
+                    overLimit
+                      ? 'muted small warn-text prompt-item-count'
+                      : 'muted small prompt-item-count'
+                  }
                 >
-                  恢复默认
-                </button>
-              </header>
-              <textarea
-                className="prompt-editor"
-                rows={7}
-                value={draft}
-                disabled={saving}
-                onChange={(event) => update(prompt.key, event.target.value)}
-              />
-              <span
-                className={
-                  draft.length > MAX_PROMPT_CHARS ? 'muted small warn-text' : 'muted small'
-                }
-              >
-                {draft.length} / {MAX_PROMPT_CHARS} 字符
-              </span>
-            </article>
+                  {draft.length} / {MAX_PROMPT_CHARS} 字符
+                </span>
+              </summary>
+
+              <div className="prompt-item-body">
+                <div className="prompt-item-toolbar">
+                  <p className="muted small">{prompt.description}</p>
+                  <button
+                    type="button"
+                    className="btn btn-small btn-ghost"
+                    disabled={saving || draft === prompt.default_system}
+                    onClick={() => reset(prompt.key, prompt.default_system)}
+                  >
+                    恢复默认
+                  </button>
+                </div>
+                <textarea
+                  className="prompt-editor"
+                  rows={7}
+                  value={draft}
+                  disabled={saving}
+                  onChange={(event) => update(prompt.key, event.target.value)}
+                />
+              </div>
+            </details>
           );
         })}
       </div>

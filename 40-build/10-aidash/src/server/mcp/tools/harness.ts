@@ -1,4 +1,5 @@
 import { AppError } from '../../../shared/errors.js';
+import { harnessPresence } from '../../../shared/harness.js';
 import { harnessHeartbeatSchema, harnessRegisterSchema } from '../../../shared/schemas.js';
 import type { Harness } from '../../../shared/types.js';
 import { runTool } from './shared.js';
@@ -42,12 +43,23 @@ export function registerHarnessTools({ server, ctx, mcpCtx, log }: ToolDeps): vo
       runTool('harness.heartbeat', log, () => {
         const input = harnessHeartbeatSchema.parse(args);
         const now = ctx.clock.now();
-        if (!ctx.repos.harnesses.heartbeat(input.harness_id, now)) {
+        if (!ctx.repos.harnesses.heartbeat(input.harness_id, now, input.status_hint ?? null)) {
           throw new AppError('NOT_FOUND', 'HARNESS_NOT_FOUND', {
             harness_id: input.harness_id,
           });
         }
-        return { harness_id: input.harness_id, at: new Date(now).toISOString() };
+        const row = ctx.repos.harnesses.get(input.harness_id)!;
+        // 回显服务端判定结果：客户端可据此确认 busy/idle 是否真的落库，
+        // 排查“跑着任务却显示空闲”时不用只能翻数据库。
+        return {
+          harness_id: input.harness_id,
+          status: row.status,
+          busy: row.busy === 1,
+          presence: harnessPresence(row),
+          last_seen: row.last_seen,
+          server_time: now,
+          at: new Date(now).toISOString(),
+        };
       }),
   );
 }

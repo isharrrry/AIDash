@@ -393,6 +393,7 @@ export async function runService(options) {
     foreground: mode === 'foreground',
     json: flags.json === true,
     noPrefix: flags.noPrefix === true,
+    renderMarkdown: flags.noMd !== true,
     logFile,
     dataDir,
     tempDir,
@@ -404,10 +405,41 @@ export async function runService(options) {
     circuitBreaker: null,
   };
 
-  const heartbeatPromise = heartbeatLoop(ctx, {
-    isRegistered: () => registered,
-    onAuthError: (error) => requestStop('auth', error),
-  });
+  /**
+   * 单次心跳。抽出来是为了两处复用：
+   * 1. 固定间隔的心跳循环；
+   * 2. 任务开始/结束时的立即补拍——只等固定间隔的话，UI 在长任务开始后
+   *    最多仍要等一个 heartbeat_interval 才从“空闲在线”变成“运行中”，
+   *    结束同理。状态切换本身就是心跳要表达的事实，没必要攒到下一拍。
+   */
+  const sendHeartbeat = async () => {
+    if (!registered) return false;
+    try {
+      await ctx.client.call(
+        'harness.heartbeat',
+        {
+          harness_id: config.harness_id,
+          status_hint: ctx.state.busy ? 'busy' : 'idle',
+        },
+        { timeoutMs: HEARTBEAT_TIMEOUT_MS },
+      );
+      ctx.state.lastHeartbeatAt = isoNow();
+      return true;
+    } catch (error) {
+      if (isAuthError(error)) {
+        requestStop('auth', error);
+        return false;
+      }
+      logger.warn(`心跳失败：${errorMessage(error)}`);
+      return false;
+    }
+  };
+  ctx.sendHeartbeat = sendHeartbeat;
+  ctx.heartbeatNow = () => {
+    void sendHeartbeat();
+  };
+
+  const heartbeatPromise = heartbeatLoop(ctx, { isRegistered: () => registered });
 
   let consecutiveErrors = 0;
   try {
@@ -426,6 +458,9 @@ export async function runService(options) {
           registered = true;
           state.registered = true;
           logger.info(`已注册 harness：${config.harness_id}`);
+          // 注册后立刻报一拍 idle：服务端刚把 busy 重置为 0，主动确认一次
+          // 比等满一个心跳间隔更快让设置页显示“空闲在线”。
+          void sendHeartbeat();
         }
         if (controller.signal.aborted) break;
 
@@ -567,6 +602,7 @@ export async function runOnce({ config, token, dataDir, logFile = null, flags = 
     foreground: true,
     json: flags.json === true,
     noPrefix: flags.noPrefix === true,
+    renderMarkdown: flags.noMd !== true,
     logFile,
     dataDir,
     tempDir: path.join(dataDir, 'tmp'),
@@ -745,30 +781,18 @@ function countOutcome(state, outcome) {
 
 /**
  * 心跳独立循环：长任务执行期间仍要告诉服务端“我还活着”。
+ *
+ * 它和执行任务是两条并行的 async 链——task-runner 里 await 子进程时，
+ * 这里仍在按配置间隔发心跳。这是“runner 调用 harness 阻塞时不掉线”的根本保证；
+ * 任务开始/结束时再由 ctx.heartbeatNow() 立即补一拍，缩短状态切换的延迟。
  * 心跳失败不终止任务；只有 401 才触发整体停止（一个令牌错了，后续请求都会错）。
  */
-async function heartbeatLoop(ctx, { isRegistered, onAuthError }) {
+async function heartbeatLoop(ctx, { isRegistered }) {
   while (!ctx.signal.aborted) {
     const seconds = Math.max(1, ctx.getConfig().heartbeat_interval_seconds);
     await sleep(seconds * 1_000, ctx.signal);
     if (ctx.signal.aborted) break;
     if (!isRegistered()) continue;
-    try {
-      await ctx.client.call(
-        'harness.heartbeat',
-        {
-          harness_id: ctx.getConfig().harness_id,
-          status_hint: ctx.state.busy ? 'busy' : 'idle',
-        },
-        { timeoutMs: HEARTBEAT_TIMEOUT_MS },
-      );
-      ctx.state.lastHeartbeatAt = isoNow();
-    } catch (error) {
-      if (isAuthError(error)) {
-        onAuthError(error);
-        break;
-      }
-      ctx.logger.warn(`心跳失败：${errorMessage(error)}`);
-    }
+    await ctx.sendHeartbeat();
   }
 }

@@ -43,6 +43,27 @@ describe('任务树层级工具', () => {
     expect(canMoveTask(child, node('x', '/tk_x/'))).toBe(true);
   });
 
+  it('跨通道拖拽一律拒绝，同通道仍按自身/后代规则判断', () => {
+    const source = { ...node('a', '/tk_a/'), channel_id: 'ch_1' };
+    const otherChannel = { ...node('b', '/tk_b/'), channel_id: 'ch_2' };
+    // 层级上完全合法（不是自己也不是后代），但通道不同必须拒绝：
+    // 服务端按通道隔离父子关系，前端提前拦住才能让拖拽光标与落点一致。
+    expect(canMoveTask(source, otherChannel)).toBe(false);
+    expect(canMoveTask(otherChannel, source)).toBe(false);
+
+    const sameChannel = { ...node('c', '/tk_c/'), channel_id: 'ch_1' };
+    expect(canMoveTask(source, sameChannel)).toBe(true);
+    expect(
+      canMoveTask(source, { ...node('a', '/tk_a/'), channel_id: 'ch_1' }),
+    ).toBe(false);
+    expect(
+      canMoveTask(source, { ...node('a/tk_child', '/tk_a/tk_child/'), channel_id: 'ch_1' }),
+    ).toBe(false);
+
+    // 旧调用只构造 id/path（没有 channel_id）时保留原来的层级语义。
+    expect(canMoveTask(node('a', '/tk_a/'), node('b', '/tk_b/'))).toBe(true);
+  });
+
   it('父任务下拉排除自身和后代，并保留层级缩进', () => {
     const tasks = [
       node('root', '/tk_root/', '根任务'),
@@ -235,3 +256,4 @@ describe('任务列表搜索关键字', () => {
     expect(matchesTaskKeyword(bare, '白名单')).toBe(true);
   });
 });
+

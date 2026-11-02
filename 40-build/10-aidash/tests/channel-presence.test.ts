@@ -49,6 +49,7 @@ interface ChannelRow {
   open_task_count: number;
   last_mcp_at: string | null;
   agent_online: boolean;
+  agent_busy: boolean;
 }
 
 async function readChannel(a: RunningApp): Promise<ChannelRow> {
@@ -80,6 +81,53 @@ describe('通道在线判定', () => {
     expect(row.last_mcp_at).toBeNull();
     // 核心回归点：未结束任务 ≠ agent 在线。
     expect(row.agent_online).toBe(false);
+  });
+
+  it('有 in_progress 任务时即使没有 MCP 活动也算在线（运行中）', async () => {
+    const { h, a } = await boot();
+
+    h.ctx.services.channels.ensure({ channel_key: CHANNEL, title: '长任务' }, testCtx());
+    h.ctx.repos.harnesses.upsert({
+      harness_id: 'h-busy',
+      name: 'busy',
+      host: null,
+      capabilities_json: null,
+      now: h.clock.now(),
+    });
+    const task = h.ctx.services.tasks.create(
+      taskCreateSchema.parse({ channel_key: CHANNEL, title: '跑长任务' }),
+      testCtx(),
+      { submit: true },
+    ).task;
+    const claim = h.ctx.services.tasks.claim(
+      { task_id: task.id, harness_id: 'h-busy' },
+      testCtx(),
+    );
+    h.ctx.services.tasks.update(
+      { task_id: task.id, event: 'start', claim_token: claim.claim_token },
+      testCtx(),
+    );
+
+    // 模拟 runner 正在跑长任务：中间没有任何 MCP 调用，last_mcp_at 仍是 null。
+    // 只看 last_mcp_at 会把这条通道判成“已停止”，实际执行器正在干活。
+    const busy = await readChannel(a);
+    expect(busy.last_mcp_at).toBeNull();
+    expect(busy.agent_busy).toBe(true);
+    expect(busy.agent_online).toBe(true);
+
+    // 任务结束（block 收尾）且没有新鲜 MCP 活动 → 回到已停止。
+    h.ctx.services.tasks.update(
+      {
+        task_id: task.id,
+        event: 'block',
+        claim_token: claim.claim_token,
+        reason: '等待人工确认',
+      },
+      testCtx(),
+    );
+    const stopped = await readChannel(a);
+    expect(stopped.agent_busy).toBe(false);
+    expect(stopped.agent_online).toBe(false);
   });
 
   it('MCP 调用刷新在线；超过阈值自动停止；再调用恢复在线', async () => {

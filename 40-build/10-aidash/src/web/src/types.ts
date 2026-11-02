@@ -8,6 +8,7 @@
 import type {
   AssistantMemoryView,
   BatchAnswerResult,
+  HarnessPresence,
   CardAnswer,
   CardOption,
   CardStatus,
@@ -37,6 +38,7 @@ import type {
   ReportView,
   StatusResult,
   SuggestionItem,
+  TaskAncestorView,
   TaskKind,
   TaskStatus,
   TaskView,
@@ -46,6 +48,7 @@ import type {
 export type {
   AssistantMemoryView,
   BatchAnswerResult,
+  HarnessPresence,
   CardAnswer,
   CardOption,
   CardStatus,
@@ -75,6 +78,7 @@ export type {
   ReportView,
   StatusResult,
   SuggestionItem,
+  TaskAncestorView,
   TaskKind,
   TaskStatus,
   TaskView,
@@ -239,6 +243,11 @@ export interface HarnessView {
   capabilities?: string[];
   capabilities_json?: string | null;
   status: string;
+  /** 心跳自报的运行态；老服务端可能没有这个字段。 */
+  busy?: boolean;
+  /** 服务端派生状态：busy / idle / offline / disabled。 */
+  presence?: HarnessPresence;
+  busy_at?: string | null;
   last_seen: string | number;
   registered_at: string | number;
   updated_at?: string | number;

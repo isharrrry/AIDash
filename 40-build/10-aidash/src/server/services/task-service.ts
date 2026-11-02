@@ -175,6 +175,9 @@ export class TaskService {
       risk_flagged_at: null,
       risk_resolved_at: null,
       risk_resolution: null,
+      // 新任务还没讨论过；结论只在 discussion 任务 complete 且带 answer_md 时写入。
+      discussion_answer_md: null,
+      discussion_answered_at: null,
       evidence_json: null,
       idempotency_key: input.idempotency_key ?? null,
       created_by: ctx.actorLabel,
@@ -334,6 +337,10 @@ export class TaskService {
           risk_flagged_at: null,
           risk_resolved_at: null,
           risk_resolution: null,
+          // 结论是“上一轮问答”的产出，不是任务模板：复制出的草稿还没讨论过，
+          // 不能带着旧结论出现在父链上下文里。
+          discussion_answer_md: null,
+          discussion_answered_at: null,
           evidence_json: null,
           idempotency_key: null,
           created_by: ctx.actorLabel,

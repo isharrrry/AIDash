@@ -194,6 +194,7 @@ aidash-runner stop
 | `--log-file <path>` | `<data-dir>/logs/<id>.log` | 日志文件 |
 | `--data-dir <path>` | `~/.aidash/runner` | 实例 registry、临时任务文件、默认日志 |
 | `--no-prefix` | 关闭 | 子进程输出不加 `[task_id]` 前缀 |
+| `--no-md` | 关闭 | 关闭前台终端的 Markdown 渲染，harness stdout 原样输出 |
 | `--json` | 关闭 | 机器可读输出 |
 
 ### 精确通道与初始化任务（`--ensure-channel` / `--create-task`）
@@ -283,8 +284,9 @@ aidash-runner start --config ./aidash-runner.json \
 默认环境变量白名单：`PATH`、`HOME`、`TMPDIR`、`SystemRoot`、`ComSpec`、`PATHEXT`、`WINDIR`、`TEMP`、`TMP`。
 `AIDASH_TOKEN`、`AIDASH_LLM_API_KEY` 以及任何从父进程继承、以 `_TOKEN/_SECRET/_KEY/_PASSWORD`
 结尾的变量永不传给子进程，即使被写进 `env_passthrough` 也会被过滤/警告。
-runner 自己注入的 `AIDASH_TASK_ID`、`AIDASH_TASK_TITLE`、`AIDASH_CHANNEL_KEY` 等是任务元数据
-（`CHANNEL_KEY` 是通道标识而非凭据），不受这条后缀过滤影响。
+runner 自己注入的 `AIDASH_TASK_ID`、`AIDASH_TASK_TITLE`、`AIDASH_CHANNEL_KEY`、`AIDASH_RESULT_FILE`
+等是任务元数据（`CHANNEL_KEY` 是通道标识而非凭据），不受这条后缀过滤影响；
+配置了 `result_file` 时 `AIDASH_RESULT_FILE` 就是本次执行的结果文件绝对路径。
 
 ### commands[].match
 
@@ -309,10 +311,43 @@ runner 自己注入的 `AIDASH_TASK_ID`、`AIDASH_TASK_TITLE`、`AIDASH_CHANNEL_
 | `timeout_seconds` | 继承 `command_timeout_seconds` | 1..86400；超时后杀整棵进程树 |
 | `env` | `{}` | 额外环境变量；敏感变量名会被拒绝 |
 | `env_passthrough` | `[]` | 追加到全局白名单 |
-| `result_file` | 无 | 命令写出的 JSON：`{summary,detail_md,result}`；`result` ∈ `success/failed/blocked/partial` |
+| `result_file` | 无 | 命令写出的 JSON：`{summary,detail_md,result,task_id}`；`result` ∈ `success/failed/blocked/partial`。支持 `{task_file_dir}` / `{task_id}` 占位符（见下） |
 
 `{task_file}` 是权限 0600 的临时 JSON（不含 claim_token/租约等控制字段），任务结束即删除。
-`{task_md_file}` 是同目录的 Markdown 版本。`input=none` 时不允许使用占位符。
+`{task_md_file}` 是同目录的 Markdown 版本。`input=none` 时不允许使用 `{task_file}`/`{task_md_file}`。
+`{result_file}` 会替换成解析后的结果文件绝对路径，可写进 argv 告诉 harness 往哪写；
+`{task_id}` 也可在 argv 中使用。
+
+### 结果文件：必须按执行隔离
+
+`result_file` 不是“可选的日志”，它是证据卡正文的来源。固定路径（如所有任务都写
+`claude-result.json`）在多任务、多 runner 实例共用一个工作目录时必然串号：
+
+- A 任务先完成，把 A 的结论写进共享文件；
+- B 任务没写或写到了别处，runner 却读到了 A 留下的文件；
+- B 的证据卡于是显示 A 的内容——看起来“有据可查”，实际完全张冠李戴。
+
+因此建议把结果文件放在本次执行独有的临时目录里：
+
+```json
+"run": {
+  "argv": ["claude", "-p", "读取 {task_file} 执行，完成后把结果写到 {result_file}"],
+  "result_file": "{task_file_dir}/claude-result.json"
+}
+```
+
+runner 还会做三道归属校验，任何一道不通过都不会采用文件内容：
+
+1. **执行前后对比**：执行前记录目标文件的 mtime+size，执行后没变化 → 不是本次写的；
+2. **时间窗**：文件修改时间早于本次执行开始（留 2 秒容差）→ 旧文件；
+3. **task_id**：结果 JSON 带 `task_id` 时必须与当前任务一致（建议 harness 总是写）。
+
+被忽略时 runner 日志会写明原因，证据卡“结果文件”一行也会标注；摘要回退到
+命令退出信息，不会把别的任务结论当成本任务证据。
+
+讨论任务（`kind="discussion"`）的产出就是结论本身：配置了 `result_file` 但文件缺失、
+过期或被判为别的任务时，runner 会按 `blocked` 回报并写明原因，不会因为命令退出码为 0
+就把“没有回答”标成完成。
 
 ## 匹配、排序与安全边界
 
@@ -325,6 +360,11 @@ runner 自己注入的 `AIDASH_TASK_ID`、`AIDASH_TASK_TITLE`、`AIDASH_CHANNEL_
 
 - 命令输出用 `pipe` 捕获，**不继承终端**，否则无法脱敏、写日志和进环形缓冲。
 - 输出同时写：前台终端、日志文件、首尾各 8KB 环形缓冲（用于卡片正文）。
+- 前台终端会轻量渲染 harness stdout 里的 Markdown（标题、粗体/斜体、行内代码、
+  代码块、列表、引用、链接和表格）；**日志文件、证据卡、环形缓冲仍保存原文**。
+  渲染只在 stdout 是真实 TTY 时启用，`--json`、重定向/管道和 `--no-md` 都保持原样；
+  带 ANSI 或光标控制的行原样放行，避免和 harness 自己的界面打架。终端不支持 ANSI 时
+  可设 `NO_COLOR=1`：仍会去掉 Markdown 标记，但不输出颜色转义。
 - 写终端/日志前脱敏 Bearer、`*_TOKEN/SECRET/KEY/PASSWORD=...`；卡片正文额外清除 ANSI。
 - 先发 `status` 证据卡，再 `task.update complete`（服务端强制要求证据）。
 - 幂等键由 `claim_token` 派生（`sha256` 截断），客户端重试不会产生重复卡。
@@ -404,6 +444,8 @@ stderr 的不同故障误判成同因。这样做的目标不是“猜根因”�
 - 当前服务端没有 `task.get` 工具：runner 先用 claim 返回的任务视图，缺失时按
   `channel_key + status=claimed + include_description` 翻页查找；都没有则退回 claim 字段。
 - `logs -f` 在 Windows 上依赖轮询文件大小，不是文件系统事件。
+- 控制台 Markdown 渲染是启发式：含 ANSI/光标控制的行原样放行，超宽表格不自动折行；
+  日志文件、证据卡和环形缓冲始终保存原文，不受渲染影响。
 - 没有 Windows 服务/launchd/systemd 集成；需要开机自启请自行用系统计划任务包裹 `start --daemon`。
 
 ## 开发与测试

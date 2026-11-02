@@ -6,8 +6,8 @@ import { listCards, markCardRead } from '../api/endpoints';
 import { useAsync } from '../hooks/useAsync';
 import { FEED_PAGE_SIZE, toAscendingPage } from '../lib/feed-page';
 import { formatAbsolute, formatRelative, truncate } from '../lib/format';
-import { openCard } from '../lib/router';
 import { CardTypeBadge, PriorityBadge } from './Badge';
+import { CardDetailInline } from './CardDetailInline';
 import { ErrorBox, Loading } from './Feedback';
 import { MarkdownInline } from './Markdown';
 import { useToast } from './Toast';
@@ -28,6 +28,11 @@ import { useToast } from './Toast';
  * 为什么已读状态以服务端返回的 read_at 为准：
  *   本地 localStorage 换浏览器/清缓存会复活红点；服务端已读才能跨设备一致。
  *   本组件只在请求成功后把卡片加入本地 readIds，失败时仍保持未读，下次再试。
+ *
+ * 为什么点击条目是原地展开而不是打开卡片抽屉：
+ *   读一条状态/产物卡经常只是“扫一眼正文”，抽屉会盖住整页并锁定滚动，
+ *   看完还要再关一次；在任务详情里连续翻多条时，这个往返很打断节奏。
+ *   现在条目本身就是 Expander，点一下在下方展开完整卡片详情，再点收起。
  */
 export function TaskFeed({
   taskId,
@@ -48,6 +53,8 @@ export function TaskFeed({
   // 已加载但随后被本地标记已读的 card_id。服务端返回的 read_at 仍保留在 data 里，
   // 两者合并判断才能让“刚滚到的那条”立刻从红点消失，而不用等下一次整页刷新。
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
+  // 展开/收起的条目。允许同时展开多条：对比前后两条信息时不该被迫来回点。
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const processingRef = useRef<Set<string>>(new Set());
   const onUnreadChangeRef = useRef(onUnreadChange);
   onUnreadChangeRef.current = onUnreadChange;
@@ -69,10 +76,29 @@ export function TaskFeed({
   );
 
   useEffect(() => {
-    // 切任务时清空本地已读集合与处理中集合，避免把 A 任务的已读状态带到 B 任务。
+    // 切任务时清空本地已读集合、展开集合与处理中集合，避免把 A 任务的状态带到 B 任务。
     setReadIds(new Set());
+    setExpandedIds(new Set());
     processingRef.current = new Set();
   }, [taskId]);
+
+  const toggleExpanded = useCallback((cardId: string): void => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  }, []);
+
+  const collapse = useCallback((cardId: string): void => {
+    setExpandedIds((prev) => {
+      if (!prev.has(cardId)) return prev;
+      const next = new Set(prev);
+      next.delete(cardId);
+      return next;
+    });
+  }, []);
 
   const isRead = useCallback(
     (card: CardView): boolean => card.read_at !== null || readIds.has(card.id),
@@ -181,20 +207,36 @@ export function TaskFeed({
       <div className="task-feed-list">
         {cards.map((card) => {
           const unread = !isRead(card);
+          const expanded = expandedIds.has(card.id);
+          const detailId = `task-feed-detail-${card.id}`;
           return (
             <article
               key={card.id}
-              className={unread ? 'task-feed-item unread' : 'task-feed-item'}
+              className={[
+                'task-feed-item',
+                unread ? 'unread' : '',
+                expanded ? 'expanded' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               data-card-id={card.id}
               data-unread={unread ? 'true' : 'false'}
             >
               <button
                 type="button"
                 className="task-feed-main"
-                title="打开卡片详情"
-                onClick={() => openCard(card.id)}
+                aria-expanded={expanded}
+                aria-controls={detailId}
+                title={expanded ? '收起卡片详情' : '展开卡片详情'}
+                onClick={() => toggleExpanded(card.id)}
               >
                 <span className="task-feed-head">
+                  <span
+                    className={expanded ? 'task-feed-caret open' : 'task-feed-caret'}
+                    aria-hidden="true"
+                  >
+                    ▸
+                  </span>
                   <CardTypeBadge type={card.type} />
                   <PriorityBadge priority={card.priority} />
                   {unread ? <span className="task-feed-unread">未读</span> : null}
@@ -206,10 +248,21 @@ export function TaskFeed({
                 <span className="task-feed-title">
                   <MarkdownInline source={card.title || card.summary || card.id} />
                 </span>
-                {feedExcerpt(card) ? (
+                {/* 展开后正文就在下面，摘要不再重复占一行。 */}
+                {!expanded && feedExcerpt(card) ? (
                   <span className="task-feed-excerpt">{feedExcerpt(card)}</span>
                 ) : null}
               </button>
+
+              {expanded ? (
+                <div className="task-feed-detail" id={detailId}>
+                  <CardDetailInline
+                    card={card}
+                    onChanged={() => void reload()}
+                    onCollapse={() => collapse(card.id)}
+                  />
+                </div>
+              ) : null}
             </article>
           );
         })}

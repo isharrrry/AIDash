@@ -34,6 +34,9 @@ import {
 import { EdgeBuffer } from '../src/ring-buffer.js';
 import {
   readResultFile,
+  readResultFileForTask,
+  resolveResultFile,
+  snapshotResultFile,
   substitutePlaceholders,
   taskMarkdown,
   taskPayload,
@@ -341,6 +344,89 @@ test('结果文件读取失败时回退，不把任务判失败', () => {
   fs.writeFileSync(broken, '{not json');
   assert.equal(readResultFile(broken), null);
   assert.equal(readResultFile(path.join(dir, 'missing.json')), null);
+});
+
+test('结果文件归属校验：未更新、过期、别的任务都忽略', () => {
+  const dir = tempDir();
+  const file = path.join(dir, 'result.json');
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ summary: '旧任务结论', detail_md: '旧正文', result: 'success', task_id: 'tk_old' }),
+  );
+
+  // 执行前已存在的文件，执行后 mtime+size 没变：不是本次写的。
+  const baseline = snapshotResultFile(file);
+  const unchanged = readResultFileForTask(file, { taskId: 'tk_new', baseline, sinceMs: Date.now() });
+  assert.equal(unchanged.file, null);
+  assert.equal(unchanged.issue, 'unchanged');
+
+  // 文件修改时间早于本次执行开始（超过 2s 容差）。
+  const stale = readResultFileForTask(file, { taskId: 'tk_new', sinceMs: Date.now() + 60_000 });
+  assert.equal(stale.file, null);
+  assert.equal(stale.issue, 'stale');
+
+  // 文件是新的，但 task_id 属于另一个任务：并发/串号时同样不能采用。
+  const foreign = readResultFileForTask(file, { taskId: 'tk_new' });
+  assert.equal(foreign.file, null);
+  assert.equal(foreign.issue, 'foreign');
+  assert.equal(foreign.foreignTaskId, 'tk_old');
+
+  // task_id 匹配才接受。
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ summary: '本次结论', detail_md: '本次正文', result: 'success', task_id: 'tk_new' }),
+  );
+  const ok = readResultFileForTask(file, { taskId: 'tk_new', baseline });
+  assert.equal(ok.issue, null);
+  assert.equal(ok.file.summary, '本次结论');
+  assert.equal(ok.file.task_id, 'tk_new');
+});
+
+test('结果文件路径按任务解析，argv 占位符一次性替换', () => {
+  const dir = tempDir();
+  const taskDir = path.join(dir, 'run-1');
+  fs.mkdirSync(taskDir, { recursive: true });
+
+  assert.equal(
+    resolveResultFile('{task_file_dir}/claude-result.json', { taskId: 'tk_1', taskDir }),
+    path.join(taskDir, 'claude-result.json'),
+  );
+  assert.equal(
+    resolveResultFile('out/{task_id}.json', { taskId: 'tk_1', taskDir }),
+    path.resolve(taskDir, 'out', 'tk_1.json'),
+  );
+  assert.equal(resolveResultFile('', { taskId: 'tk_1', taskDir }), null);
+
+  const paths = {
+    jsonPath: path.join(taskDir, 'task.json'),
+    mdPath: path.join(taskDir, 'task.md'),
+    resultPath: path.join(taskDir, 'claude-result.json'),
+    taskId: 'tk_1',
+  };
+  assert.deepEqual(
+    substitutePlaceholders(
+      ['{task_file}', '{task_md_file}', '{result_file}', '{task_id}', '{unknown}'],
+      paths,
+    ),
+    [paths.jsonPath, paths.mdPath, paths.resultPath, 'tk_1', '{unknown}'],
+  );
+});
+
+test('task 文件写入本次任务的结果路径与输出契约', () => {
+  const task = { id: 'tk_result', title: '结果契约', channel_key: 'chan', tags: [] };
+  const files = writeTaskFiles(task, { resultFileTemplate: '{task_file_dir}/claude-result.json' });
+  try {
+    assert.equal(files.resultPath, path.join(files.dir, 'claude-result.json'));
+    const payload = JSON.parse(fs.readFileSync(files.jsonPath, 'utf8'));
+    assert.equal(payload.result_file, files.resultPath);
+    const md = fs.readFileSync(files.mdPath, 'utf8');
+    assert.match(md, /## 输出契约/);
+    assert.match(md, new RegExp(files.resultPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(md, /task_id/);
+  } finally {
+    files.cleanup();
+  }
+  assert.equal(fs.existsSync(files.dir), false);
 });
 
 /* ---------------------------------- child env -------------------------------- */

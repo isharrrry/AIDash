@@ -8,7 +8,12 @@ import { txImmediate, type Db } from '../db/connection.js';
 import type { EventRepo, HarnessRepo } from '../repos/support-repos.js';
 import type { TaskRepo } from '../repos/task-repo.js';
 import type { AuditService } from './audit-service.js';
-import { requireTask, taskToView, type TaskQueryDeps } from './task-service-query.js';
+import {
+  requireTask,
+  taskAncestors,
+  taskToView,
+  type TaskQueryDeps,
+} from './task-service-query.js';
 
 /**
  * TaskService 的认领与租约、以及树深度校验。
@@ -78,7 +83,9 @@ export function claimTask(
     harness_id: input.harness_id,
   });
   return {
-    task: taskToView(deps, claimed),
+    // 认领是 runner 开始执行前唯一一次拿到父链的机会：一并下发，
+    // runner 写 {task_file} 时不必再逐层请求（讨论子任务尤其依赖上文）。
+    task: { ...taskToView(deps, claimed), ancestors: taskAncestors(deps.tasks, claimed) },
     claim_token: outcome.claimToken!,
     lease_expires_at: new Date(claimed.claim_expires_at!).toISOString(),
     renewed: outcome.renewed ?? false,
