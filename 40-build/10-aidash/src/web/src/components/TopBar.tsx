@@ -13,6 +13,9 @@ export type ConnectionState = 'online' | 'offline' | 'checking';
  */
 const NAV_ITEMS: Array<{ name: RouteName; href: string; label: string }> = [
   { name: 'tasks', href: '#/tasks', label: '任务树' },
+  // 事项页是任务树的另一种视图：按“子通道 × 周期”看同一批任务记录，
+  // 放在两者中间，用户可以在“逐层看活”和“按事项按时段回看”之间直接切换。
+  { name: 'items', href: '#/items', label: '事项' },
   { name: 'home', href: '#/', label: '决策台' },
   { name: 'memory', href: '#/memory', label: '记忆' },
   { name: 'reports', href: '#/reports', label: '汇报' },

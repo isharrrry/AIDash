@@ -1,0 +1,439 @@
+[PASS] 端口预检：4289/18887 空闲 :: {"manager_4289_free":true,"aidash_18887_free":true}
+[PASS] 管理台首页构建产物存在 :: web-dist/index.html
+[PASS] 管理台无参 Web 启动（临时 home/端口） :: {"port":4289,"home":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home","stdout_head":["AIDash Manager v0.1.0 已启动","  管理台: http://127.0.0.1:4289/?token=<redacted>","  数据目录: C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home","  提示: 链接里的 token 用于首次鉴权，浏览器会自动改成 Cookie；不要把它发给别人。","  按 Ctrl+C 停止管理台（不会停止由它拉起的服务进程）"]}
+[PASS] 管理台访问令牌已生成（web-token） :: {"length":64,"home":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home"}
+[PASS] 未授权访问 /api/state 被拒绝（401） :: {"status":401,"code":"UNAUTHORIZED"}
+[PASS] 浏览器路径：?token= 换取 HttpOnly Cookie 并 302 :: {"status":302,"location":"/","cookie_flags":["HttpOnly","SameSite=Strict","Path=/","Max-Age=604800"]}
+[PASS] 管理台 Web 页面可访问并返回 SPA :: {"status":200,"title_found":true,"bytes":464}
+[PASS] 全新 home 初始服务列表为空 :: {"manager":{"version":"0.1.0","home":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home","host":"127.0.0.1","port":4289,"started_at":"2026-11-04T09:48:37.345Z","uptime_ms":231,"node":"v24.16.0","platform":"win32"},"services":0}
+[PASS] 模板接口包含 claude/codex/dsh/narnat/custom :: ["claude","codex","dsh","narnat","custom"]
+[PASS] 创建第二 AIDash 服务记录 :: {"id":"svc_982824527b31","name":"验收-AIDash-18887","has_token":true,"db_path":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db","config_mode":"env"}
+[PASS] 启动第二 AIDash 并等待 /healthz 通过 :: {"state":"running","pid":21916,"url":"http://127.0.0.1:18887","detail":"管理台拉起的进程正在运行"}
+[PASS] 第二 AIDash 的 /healthz 返回 ok 且指向临时库 :: {"ok":true,"status":"ok","version":"2.0.0","db_path":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db"}
+[PASS] 管理台状态接口显示该 AIDash running :: {"state":"running","pid":21916}
+[PASS] 管理台可读取 AIDash 启动日志 :: {"source":"manager","lines":12,"has_listening":true,"tail":["{\"ts\":\"2026-11-04T09:48:38.454Z\",\"level\":\"info\",\"msg\":\"pre_migration_backup\",\"file\":\"pre-migrate-0-to-20-2026-11-04T09-48-38-442Z.db\",\"from\":0,\"to\":20}","{\"ts\":\"2026-11-04T09:48:38.490Z\",\"level\":\"info\",\"msg\":\"db_ready\",\"db_path\":\"C:\\\\Users\\\\PC\\\\AppData\\\\Local\\\\Temp\\\\aidash-manager-verify-yCAKa1\\\\aidash-temp\\\\aidash.db\",\"schema_version\":20,\"applied\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20],\"skipped\":[]}","{\"ts\":\"2026-11-04T09:48:38.516Z\",\"level\":\"info\",\"msg\":\"listening\",\"url\":\"http://127.0.0.1:18887\",\"mcp\":\"/mcp\",\"db_path\":\"C:\\\\Users\\\\PC\\\\AppData\\\\Local\\\\Temp\\\\aidash-manager-verify-yCAKa1\\\\aidash-temp\\\\aidash.db\",\"static_dir\":\"D:\\\\app\\\\AIDash\\\\aidash\\\\40-build\\\\10-aidash\\\\dist\\\\web\",\"kb_configured\":false}","{\"ts\":\"2026-11-04T09:48:38.685Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":4,\"request_id\":\"req_01M6JZBSWSRPPCETG8DESK53DY\"}","{\"ts\":\"2026-11-04T09:48:38.694Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":1,\"request_id\":\"req_01M6JZBSX5R6KPZQVTANMT4HW5\"}","{\"ts\":\"2026-11-04T09:48:38.696Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":1,\"request_id\":\"req_01M6JZBSX7CXV5PYX75GBTDH1B\"}","{\"ts\":\"2026-11-04T09:48:38.700Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":0,\"request_id\":\"req_01M6JZBSXBRZ0NHXX3MMCRWPZ0\"}","{\"ts\":\"2026-11-04T09:48:38.703Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":0,\"request_id\":\"req_01M6JZBSXFHCSVQ4QG8AKRAQSY\"}"]}
+[PASS] 管理台可返回 AIDash 异常摘要 :: {"groups":1,"error_count":0,"warn_count":1}
+[PASS] 停止第二 AIDash（管理台进程树） :: {"state":"stopped","pid_alive":false,"already_stopped":false}
+[PASS] 停止后 18887 不再响应且端口释放 :: {"status":"fetch-error","port_free":true,"old_pid_alive":false}
+[PASS] 只读登记现有 8787，状态为 external（非管理台拉起） :: {"id":"svc_e201419eafe0","state":"external","detail":"端口上有 AIDash 在响应，但不是本管理台拉起的进程；不能从这里停止","health":{"ok":true,"status":"ok","version":"2.0.0","db_path":"D:\\app\\AIDash\\data\\aidash.db"},"before_health":{"ok":true,"status":"ok","version":"2.0.0","db_path":"D:\\app\\AIDash\\data\\aidash.db"}}
+[PASS] 外部实例不可被管理台停止（预期拒绝） :: {"blocked":true}
+[PASS] runner 前置：临时 AIDash 重新启动 :: {"state":"running","pid":15484}
+[PASS] 创建 runner 服务（claude 模板，专用测试通道） :: {"id":"svc_46734471217b","harness_id":"claude-manager-verify","channels":["devhost/aidash-verify/manager-e2e"],"config_path":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-runner.claude-manager-verify.json","data_dir":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner-data"}
+[PASS] runner 配置文件由模板生成且字段正确 :: {"aidash_url":"http://127.0.0.1:18887/mcp","channels":["devhost/aidash-verify/manager-e2e"],"command":"claude","match_all":true}
+[PASS] 启动 runner 并确认控制面就绪 :: {"state":"running","pid":17156,"instance_id":"claude-manager-verify","detail":"runner 控制面正常","busy":false}
+[PASS] 管理台可读取 runner 日志 :: {"source":"runner","lines":2,"tail":["[2026-11-04T09:48:40.285Z] INFO  实例 claude-manager-verify 已启动（pid 17156，background，控制面 http://127.0.0.1:9356，日志 C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner.log）","[2026-11-04T09:48:40.388Z] INFO  已连接 AIDash：http://127.0.0.1:18887/mcp"]}
+[PASS] 管理台可返回 runner 异常摘要 :: {"groups":0,"error_count":0,"warn_count":0}
+[INFO] 管理台截图：D:\app\AIDash\aidash\50-verify\artifacts\manager-2026-11-04\overview.png (106653 bytes)
+[PASS] 管理台 stop 通过 runner 控制面优雅停止 runner :: {"state":"stopped","pid_alive":false,"pid":17156}
+[PASS] runner 停止后进程确实退出 :: {"pid":17156,"log_tail":["[2026-11-04T09:48:40.285Z] INFO  实例 claude-manager-verify 已启动（pid 17156，background，控制面 http://127.0.0.1:9356，日志 C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner.log）","[2026-11-04T09:48:40.388Z] INFO  已连接 AIDash：http://127.0.0.1:18887/mcp","[2026-11-04T09:48:40.402Z] INFO  已注册 harness：claude-manager-verify","[2026-11-04T09:48:41.537Z] INFO  收到停止请求：control","[2026-11-04T09:48:41.539Z] INFO  实例 claude-manager-verify 已停止（原因：control）"]}
+[PASS] 退出测试前：AIDash 与 runner 均由管理台拉起并运行 :: {"aidash":{"state":"running","pid":15484},"runner":{"state":"running","pid":4284}}
+[PASS] 管理台进程已退出且 4289 不再监听 :: {"exit_code":null,"signal":"SIGTERM","manager_alive":false,"port_free":true}
+[PASS] 管理台退出后：拉起的 AIDash 仍健康、runner 控制面仍存活 :: {"aidash_health":{"ok":true,"status":"ok","version":"2.0.0","db_path":"C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db"},"runner_control_status":200,"runner_registry_pid":4284,"runner_pid_alive":true,"manager_exit":["[manager exit] code=null signal=SIGTERM"]}
+[PASS] 临时实例与临时数据清理完成 :: {"killed_aidash":[{"pid":15484,"exit":0,"stdout":"�ɹ�: ����ֹ PID 15484 (���� PID 18456 �ӽ���)�Ľ��̡�"}],"stopped_runner":{"exit":0,"stdout":"{\"ok\":true,\"data\":{\"stopped\":true,\"instances\":[{\"instance_id\":\"claude-manager-verify\",\"pid\":4284,\"stopped\":true,\"request_sent\":true,\"forced\":false}]}}\n","stderr":""},"work_removed":true,"ports_free":{"4289":true,"18887":true},"work_command_processes":[]}
+
+===== RESULT JSON =====
+{
+  "work_dir": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1",
+  "manager_home": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home",
+  "manager_port": 4289,
+  "aidash_port": 18887,
+  "steps": [],
+  "checks": [
+    {
+      "name": "端口预检：4289/18887 空闲",
+      "ok": true,
+      "evidence": {
+        "manager_4289_free": true,
+        "aidash_18887_free": true
+      }
+    },
+    {
+      "name": "管理台首页构建产物存在",
+      "ok": true,
+      "evidence": "web-dist/index.html"
+    },
+    {
+      "name": "管理台无参 Web 启动（临时 home/端口）",
+      "ok": true,
+      "evidence": {
+        "port": 4289,
+        "home": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home",
+        "stdout_head": [
+          "AIDash Manager v0.1.0 已启动",
+          "  管理台: http://127.0.0.1:4289/?token=<redacted>",
+          "  数据目录: C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home",
+          "  提示: 链接里的 token 用于首次鉴权，浏览器会自动改成 Cookie；不要把它发给别人。",
+          "  按 Ctrl+C 停止管理台（不会停止由它拉起的服务进程）"
+        ]
+      }
+    },
+    {
+      "name": "管理台访问令牌已生成（web-token）",
+      "ok": true,
+      "evidence": {
+        "length": 64,
+        "home": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home"
+      }
+    },
+    {
+      "name": "未授权访问 /api/state 被拒绝（401）",
+      "ok": true,
+      "evidence": {
+        "status": 401,
+        "code": "UNAUTHORIZED"
+      }
+    },
+    {
+      "name": "浏览器路径：?token= 换取 HttpOnly Cookie 并 302",
+      "ok": true,
+      "evidence": {
+        "status": 302,
+        "location": "/",
+        "cookie_flags": [
+          "HttpOnly",
+          "SameSite=Strict",
+          "Path=/",
+          "Max-Age=604800"
+        ]
+      }
+    },
+    {
+      "name": "管理台 Web 页面可访问并返回 SPA",
+      "ok": true,
+      "evidence": {
+        "status": 200,
+        "title_found": true,
+        "bytes": 464
+      }
+    },
+    {
+      "name": "全新 home 初始服务列表为空",
+      "ok": true,
+      "evidence": {
+        "manager": {
+          "version": "0.1.0",
+          "home": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home",
+          "host": "127.0.0.1",
+          "port": 4289,
+          "started_at": "2026-11-04T09:48:37.345Z",
+          "uptime_ms": 231,
+          "node": "v24.16.0",
+          "platform": "win32"
+        },
+        "services": 0
+      }
+    },
+    {
+      "name": "模板接口包含 claude/codex/dsh/narnat/custom",
+      "ok": true,
+      "evidence": [
+        "claude",
+        "codex",
+        "dsh",
+        "narnat",
+        "custom"
+      ]
+    },
+    {
+      "name": "创建第二 AIDash 服务记录",
+      "ok": true,
+      "evidence": {
+        "id": "svc_982824527b31",
+        "name": "验收-AIDash-18887",
+        "has_token": true,
+        "db_path": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db",
+        "config_mode": "env"
+      }
+    },
+    {
+      "name": "启动第二 AIDash 并等待 /healthz 通过",
+      "ok": true,
+      "evidence": {
+        "state": "running",
+        "pid": 21916,
+        "url": "http://127.0.0.1:18887",
+        "detail": "管理台拉起的进程正在运行"
+      }
+    },
+    {
+      "name": "第二 AIDash 的 /healthz 返回 ok 且指向临时库",
+      "ok": true,
+      "evidence": {
+        "ok": true,
+        "status": "ok",
+        "version": "2.0.0",
+        "db_path": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db"
+      }
+    },
+    {
+      "name": "管理台状态接口显示该 AIDash running",
+      "ok": true,
+      "evidence": {
+        "state": "running",
+        "pid": 21916
+      }
+    },
+    {
+      "name": "管理台可读取 AIDash 启动日志",
+      "ok": true,
+      "evidence": {
+        "source": "manager",
+        "lines": 12,
+        "has_listening": true,
+        "tail": [
+          "{\"ts\":\"2026-11-04T09:48:38.454Z\",\"level\":\"info\",\"msg\":\"pre_migration_backup\",\"file\":\"pre-migrate-0-to-20-2026-11-04T09-48-38-442Z.db\",\"from\":0,\"to\":20}",
+          "{\"ts\":\"2026-11-04T09:48:38.490Z\",\"level\":\"info\",\"msg\":\"db_ready\",\"db_path\":\"C:\\\\Users\\\\PC\\\\AppData\\\\Local\\\\Temp\\\\aidash-manager-verify-yCAKa1\\\\aidash-temp\\\\aidash.db\",\"schema_version\":20,\"applied\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20],\"skipped\":[]}",
+          "{\"ts\":\"2026-11-04T09:48:38.516Z\",\"level\":\"info\",\"msg\":\"listening\",\"url\":\"http://127.0.0.1:18887\",\"mcp\":\"/mcp\",\"db_path\":\"C:\\\\Users\\\\PC\\\\AppData\\\\Local\\\\Temp\\\\aidash-manager-verify-yCAKa1\\\\aidash-temp\\\\aidash.db\",\"static_dir\":\"D:\\\\app\\\\AIDash\\\\aidash\\\\40-build\\\\10-aidash\\\\dist\\\\web\",\"kb_configured\":false}",
+          "{\"ts\":\"2026-11-04T09:48:38.685Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":4,\"request_id\":\"req_01M6JZBSWSRPPCETG8DESK53DY\"}",
+          "{\"ts\":\"2026-11-04T09:48:38.694Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":1,\"request_id\":\"req_01M6JZBSX5R6KPZQVTANMT4HW5\"}",
+          "{\"ts\":\"2026-11-04T09:48:38.696Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":1,\"request_id\":\"req_01M6JZBSX7CXV5PYX75GBTDH1B\"}",
+          "{\"ts\":\"2026-11-04T09:48:38.700Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":0,\"request_id\":\"req_01M6JZBSXBRZ0NHXX3MMCRWPZ0\"}",
+          "{\"ts\":\"2026-11-04T09:48:38.703Z\",\"level\":\"info\",\"msg\":\"http_request\",\"method\":\"GET\",\"path\":\"/healthz\",\"status\":200,\"ms\":0,\"request_id\":\"req_01M6JZBSXFHCSVQ4QG8AKRAQSY\"}"
+        ]
+      }
+    },
+    {
+      "name": "管理台可返回 AIDash 异常摘要",
+      "ok": true,
+      "evidence": {
+        "groups": 1,
+        "error_count": 0,
+        "warn_count": 1
+      }
+    },
+    {
+      "name": "停止第二 AIDash（管理台进程树）",
+      "ok": true,
+      "evidence": {
+        "state": "stopped",
+        "pid_alive": false,
+        "already_stopped": false
+      }
+    },
+    {
+      "name": "停止后 18887 不再响应且端口释放",
+      "ok": true,
+      "evidence": {
+        "status": "fetch-error",
+        "port_free": true,
+        "old_pid_alive": false
+      }
+    },
+    {
+      "name": "只读登记现有 8787，状态为 external（非管理台拉起）",
+      "ok": true,
+      "evidence": {
+        "id": "svc_e201419eafe0",
+        "state": "external",
+        "detail": "端口上有 AIDash 在响应，但不是本管理台拉起的进程；不能从这里停止",
+        "health": {
+          "ok": true,
+          "status": "ok",
+          "version": "2.0.0",
+          "db_path": "D:\\app\\AIDash\\data\\aidash.db"
+        },
+        "before_health": {
+          "ok": true,
+          "status": "ok",
+          "version": "2.0.0",
+          "db_path": "D:\\app\\AIDash\\data\\aidash.db"
+        }
+      }
+    },
+    {
+      "name": "外部实例不可被管理台停止（预期拒绝）",
+      "ok": true,
+      "evidence": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "runner 前置：临时 AIDash 重新启动",
+      "ok": true,
+      "evidence": {
+        "state": "running",
+        "pid": 15484
+      }
+    },
+    {
+      "name": "创建 runner 服务（claude 模板，专用测试通道）",
+      "ok": true,
+      "evidence": {
+        "id": "svc_46734471217b",
+        "harness_id": "claude-manager-verify",
+        "channels": [
+          "devhost/aidash-verify/manager-e2e"
+        ],
+        "config_path": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-runner.claude-manager-verify.json",
+        "data_dir": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner-data"
+      }
+    },
+    {
+      "name": "runner 配置文件由模板生成且字段正确",
+      "ok": true,
+      "evidence": {
+        "aidash_url": "http://127.0.0.1:18887/mcp",
+        "channels": [
+          "devhost/aidash-verify/manager-e2e"
+        ],
+        "command": "claude",
+        "match_all": true
+      }
+    },
+    {
+      "name": "启动 runner 并确认控制面就绪",
+      "ok": true,
+      "evidence": {
+        "state": "running",
+        "pid": 17156,
+        "instance_id": "claude-manager-verify",
+        "detail": "runner 控制面正常",
+        "busy": false
+      }
+    },
+    {
+      "name": "管理台可读取 runner 日志",
+      "ok": true,
+      "evidence": {
+        "source": "runner",
+        "lines": 2,
+        "tail": [
+          "[2026-11-04T09:48:40.285Z] INFO  实例 claude-manager-verify 已启动（pid 17156，background，控制面 http://127.0.0.1:9356，日志 C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner.log）",
+          "[2026-11-04T09:48:40.388Z] INFO  已连接 AIDash：http://127.0.0.1:18887/mcp"
+        ]
+      }
+    },
+    {
+      "name": "管理台可返回 runner 异常摘要",
+      "ok": true,
+      "evidence": {
+        "groups": 0,
+        "error_count": 0,
+        "warn_count": 0
+      }
+    },
+    {
+      "name": "管理台总览页截图（Edge headless，辅助证据）",
+      "ok": true,
+      "evidence": {
+        "path": "D:\\app\\AIDash\\aidash\\50-verify\\artifacts\\manager-2026-11-04\\overview.png",
+        "bytes": 106653
+      }
+    },
+    {
+      "name": "管理台 stop 通过 runner 控制面优雅停止 runner",
+      "ok": true,
+      "evidence": {
+        "state": "stopped",
+        "pid_alive": false,
+        "pid": 17156
+      }
+    },
+    {
+      "name": "runner 停止后进程确实退出",
+      "ok": true,
+      "evidence": {
+        "pid": 17156,
+        "log_tail": [
+          "[2026-11-04T09:48:40.285Z] INFO  实例 claude-manager-verify 已启动（pid 17156，background，控制面 http://127.0.0.1:9356，日志 C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\manager-home\\services\\svc_46734471217b\\runner.log）",
+          "[2026-11-04T09:48:40.388Z] INFO  已连接 AIDash：http://127.0.0.1:18887/mcp",
+          "[2026-11-04T09:48:40.402Z] INFO  已注册 harness：claude-manager-verify",
+          "[2026-11-04T09:48:41.537Z] INFO  收到停止请求：control",
+          "[2026-11-04T09:48:41.539Z] INFO  实例 claude-manager-verify 已停止（原因：control）"
+        ]
+      }
+    },
+    {
+      "name": "退出测试前：AIDash 与 runner 均由管理台拉起并运行",
+      "ok": true,
+      "evidence": {
+        "aidash": {
+          "state": "running",
+          "pid": 15484
+        },
+        "runner": {
+          "state": "running",
+          "pid": 4284
+        }
+      }
+    },
+    {
+      "name": "管理台进程已退出且 4289 不再监听",
+      "ok": true,
+      "evidence": {
+        "exit_code": null,
+        "signal": "SIGTERM",
+        "manager_alive": false,
+        "port_free": true
+      }
+    },
+    {
+      "name": "管理台退出后：拉起的 AIDash 仍健康、runner 控制面仍存活",
+      "ok": true,
+      "evidence": {
+        "aidash_health": {
+          "ok": true,
+          "status": "ok",
+          "version": "2.0.0",
+          "db_path": "C:\\Users\\PC\\AppData\\Local\\Temp\\aidash-manager-verify-yCAKa1\\aidash-temp\\aidash.db"
+        },
+        "runner_control_status": 200,
+        "runner_registry_pid": 4284,
+        "runner_pid_alive": true,
+        "manager_exit": [
+          "[manager exit] code=null signal=SIGTERM"
+        ]
+      }
+    },
+    {
+      "name": "临时实例与临时数据清理完成",
+      "ok": true,
+      "evidence": {
+        "killed_aidash": [
+          {
+            "pid": 15484,
+            "exit": 0,
+            "stdout": "�ɹ�: ����ֹ PID 15484 (���� PID 18456 �ӽ���)�Ľ��̡�"
+          }
+        ],
+        "stopped_runner": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"data\":{\"stopped\":true,\"instances\":[{\"instance_id\":\"claude-manager-verify\",\"pid\":4284,\"stopped\":true,\"request_sent\":true,\"forced\":false}]}}\n",
+          "stderr": ""
+        },
+        "work_removed": true,
+        "ports_free": {
+          "4289": true,
+          "18887": true
+        },
+        "work_command_processes": []
+      }
+    }
+  ],
+  "cleanup": {
+    "killed_aidash": [
+      {
+        "pid": 15484,
+        "exit": 0,
+        "stdout": "�ɹ�: ����ֹ PID 15484 (���� PID 18456 �ӽ���)�Ľ��̡�"
+      }
+    ],
+    "stopped_runner": {
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"data\":{\"stopped\":true,\"instances\":[{\"instance_id\":\"claude-manager-verify\",\"pid\":4284,\"stopped\":true,\"request_sent\":true,\"forced\":false}]}}\n",
+      "stderr": ""
+    },
+    "work_removed": true,
+    "ports_free": {
+      "4289": true,
+      "18887": true
+    },
+    "work_command_processes": []
+  },
+  "screenshot": {
+    "path": "D:\\app\\AIDash\\aidash\\50-verify\\artifacts\\manager-2026-11-04\\overview.png",
+    "bytes": 106653
+  },
+  "error": null,
+  "result": "pass"
+}

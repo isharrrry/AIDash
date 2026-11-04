@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 export type RouteName =
   | 'home'
   | 'tasks'
+  | 'items'
   | 'memory'
   | 'reports'
   | 'settings'
@@ -48,6 +49,9 @@ export function parseRoute(hash = window.location.hash): RouteState {
   }
   if (path === '/tasks' || path.startsWith('/tasks/')) {
     return { name: 'tasks', path: '/tasks', channelKey: null, cardId };
+  }
+  if (path === '/items' || path.startsWith('/items/')) {
+    return { name: 'items', path: '/items', channelKey: null, cardId };
   }
   if (path === '/memory' || path.startsWith('/memory/')) {
     return { name: 'memory', path: '/memory', channelKey: null, cardId };

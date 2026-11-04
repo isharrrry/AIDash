@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { BusinessError, ConfigError } from './errors.js';
-import { selectRule, skipReasons } from './match.js';
+import { matchesChannels, selectRule, skipReasons } from './match.js';
 import { parseCreatedTask } from './task-parse.js';
 import { asRecord, asString, resolvePath, sha256Hex } from './util.js';
 
@@ -140,6 +140,15 @@ export async function applyRunnerSetup({
     `通道${upsert.created ? '已创建' : '已复用'}：${channelKey}（workdir ${workdir}）` +
       `${upsert.restored ? '；已从归档恢复' : ''}`,
   );
+  // 建通道和认领过滤是两件事：建了通道但 channels 不包含它时，runner 永远不会
+  // 抓该通道的任务。这类“看得到通道、看不到任务”的错觉必须在启动日志里说清。
+  const channels = config.channels ?? [];
+  if (!matchesChannels(channelKey, channels)) {
+    logger?.warn?.(
+      `已创建/复用通道 ${channelKey}，但它不在 channels 过滤内（当前：${channels.join(', ')}）：` +
+        '本实例不会认领该通道的任务；如需认领请把该通道加入通道过滤',
+    );
+  }
 
   let task = null;
   if (flags.createTask !== undefined) {

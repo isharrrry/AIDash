@@ -53,7 +53,9 @@ AIDash 把这些收敛为 **卡片、任务树、通道、记忆、值守壳** �
 - **有界等待**：`card.ask` 最多等 25 秒就返回 `pending` + `card_id`，不会因为 MCP 客户端超时而丢掉问题。
 - **任务树**：拖拽移动、父子层级、优先级、分类、租约认领、证据校验、暂缓与隐患标记；“全部通道”视图可跨通道浏览。
 - **讨论任务**：`kind="discussion"` 以大白话回答问题为产出，详情页可批量拆出多个待认领子讨论；每层子讨论认领时自动带上父链问题与上级结论。
+- **事项矩阵**：把子通道当作“事项”，按周/月周期聚合任务与汇报；支持人工阶段、负责人、优先级、标签与分组，并可按事项生成下一步建议。
 - **外部值守壳**：跨平台 CLI 轮询认领任务、拉起本地 harness、回写状态与证据；AIDash 从不主动推送任务。
+- **统一管理台**：独立的 `aidash-manager`（CLI + Web），管理多个 AIDash 与 runner 的创建、配参、启停、日志与异常摘要，为多实例级联做准备。
 - **只读知识库**：OKF Markdown 目录 + SQLite FTS5 检索，不写用户目录。
 - **可选 LLM 增强**：任意 OpenAI 兼容端点；没配置 key 时静默跳过，不阻塞主流程。
 - **审计只追加**：数据库触发器禁止 UPDATE/DELETE，没有删除 API。
@@ -91,6 +93,9 @@ AIDash 把这些收敛为 **卡片、任务树、通道、记忆、值守壳** �
 | 让 Claude Code 通过 MCP 接入 | A + B1 |
 | 让其他 agent 通过 MCP 或提示词接入 | A + B2 |
 | 让值守壳无人值守跑任务 | A + C |
+| 用统一管理台管多个 AIDash / runner | A（可选）+ D |
+
+> Web 页面会自动刷新：AIDash 各数据页默认每 10 秒对齐一次服务端（任务树、通道、事项、记忆、设置与健康状态），管理台总览每 4 秒、日志页每 2 秒、异常摘要每 5 秒；页面切到后台时暂停请求，回到前台自动恢复。
 
 ### A. 启动 AIDash（服务端 + Web）
 
@@ -194,6 +199,46 @@ node "%AIDASH_BIN%" stop
 - macOS/Linux：把 `set`/`cd /d`/`%VAR%` 换成 `export`/`cd`/`$VAR`，命令不变；`::` 注释可删。
 - 完整字段与命令见 [20-aidash-runner/README.md](40-build/20-aidash-runner/README.md)。
 
+### D. 统一管理台（可选，管理多个 AIDash / runner）
+
+`aidash-manager` 是独立的本地 CLI + Web，用来登记多个 AIDash 实例与 runner：创建、起名、配参数、切换配置文件模式、启动/停止、看日志、看异常简要。它有自己的页面（默认 `http://127.0.0.1:4280`），**不与 AIDash Web 合并**，前端技术栈相同（React 19 + Vite + TypeScript），运行时零第三方依赖。
+
+```bash
+pnpm -C 40-build install
+pnpm -C 40-build manager:build
+
+# 无参启动：自动打开浏览器并打印带令牌的访问链接
+node 40-build/30-aidash-manager/bin/aidash-manager.mjs
+
+# 或从仓库根
+pnpm -C 40-build manager:start
+```
+
+页面里创建服务即可：
+
+- **AIDash**：填名称、工作目录、端口与令牌；可切换“环境变量模式 / 配置文件模式”，常用字段和完整 JSON 都可编辑；启动后能直接打开对应 AIDash Web。多个实例用不同端口与库路径即可，为后续 AIDash 级联准备。
+- **Runner**：选 harness 模板（Claude / Codex / DeepSeek dsh / Narnat / 自定义），填 AIDash MCP 地址、`harness_id`、通道与匹配规则；管理台会生成 `aidash-runner.json`，并调用 runner 自己的 daemon/控制面完成启停和状态查询。
+
+CLI 也覆盖同样的日常操作：
+
+```bash
+node 40-build/30-aidash-manager/bin/aidash-manager.mjs list
+node 40-build/30-aidash-manager/bin/aidash-manager.mjs logs <id> -f
+node 40-build/30-aidash-manager/bin/aidash-manager.mjs templates
+```
+
+发布物与关系（一次 Release 产出三类，互不替代）：
+
+| 发布物 | 形态 | 作用 |
+|---|---|---|
+| `aidash-dist.tar.gz` | Release 附件 | AIDash 服务端 + Web，是被管理的目标 |
+| `aidash-runner` | npm 包（GitHub Packages `@isharrrry/aidash-runner`）+ Release `.tgz` | 值守壳：向 AIDash 认领任务并拉起本地 harness |
+| `aidash-manager` | npm 包（GitHub Packages `@isharrrry/aidash-manager`）+ Release `.tgz` | 管理台：本机登记服务、启停、配置、看日志 |
+
+管理台只是本机管理入口，不替代 AIDash 服务端，也不替代 runner 的任务轮询与 harness 执行；`aidash-runner` 可以脱离管理台独立安装运行。
+
+数据目录默认 `~/.aidash/manager`（可用 `AIDASH_MANAGER_HOME` 覆盖），服务清单与令牌分开存放（`manager.json` / `secrets.json`，0600）。完整用法见 [30-aidash-manager/README.md](40-build/30-aidash-manager/README.md)。
+
 ---
 
 ## 仓库结构
@@ -209,7 +254,8 @@ AIDash/
 │  ├─ package.json / pnpm-lock.yaml / pnpm-workspace.yaml
 │  ├─ 00-platform/    构建配置与工具：tsconfig / vitest / mcp.json / 打包脚本
 │  ├─ 10-aidash/      服务端 + Web 源码；AGENTS.md 与 SKILL.md；tests；旧值守壳（已弃用）
-│  └─ 20-aidash-runner/ 值守壳 aidash-runner（零依赖 npm 包，node --test 自测）
+│  ├─ 20-aidash-runner/ 值守壳 aidash-runner（零依赖 npm 包，node --test 自测）
+│  └─ 30-aidash-manager/ 管理台 aidash-manager（CLI + React Web，多实例启停/配置/日志/异常）
 ├─ 50-verify/         验证记录
 ├─ 60-deliver/        交付物
 ├─ 70-operate/        运维记录
@@ -250,6 +296,7 @@ AIDash/
 | 环境变量、配置文件、启动与备份 | [60-deliver/配置模板.md](60-deliver/配置模板.md) |
 | MCP 接入、23 个工具、值守壳接口 | [04-接口设计说明 §4、§7](30-design/设计文档包/04-接口设计说明.md) |
 | 值守壳安装、配置字段与子命令 | [40-build/20-aidash-runner/README.md](40-build/20-aidash-runner/README.md) |
+| 管理台：多 AIDash/runner 启停、配置、日志与异常 | [40-build/30-aidash-manager/README.md](40-build/30-aidash-manager/README.md) |
 | 开发环境、测试、贡献流程 | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Agent 行为契约 | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) |
 | 逐工具手册 | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) |
@@ -270,7 +317,10 @@ pnpm -C 40-build coverage       # 覆盖率
 pnpm -C 40-build build          # 服务端 → 40-build/10-aidash/dist/server
 pnpm -C 40-build web:build      # 前端   → 40-build/10-aidash/dist/web
 pnpm -C 40-build cli:build      # 旧值守壳（已弃用，仅保留兼容）→ dist/cli/aidash-watch.mjs
-pnpm -C 40-build test:runner    # 值守壳 aidash-runner 自测（node --test，120 项）
+pnpm -C 40-build test:runner    # 值守壳 aidash-runner 自测（node --test，155 项）
+pnpm -C 40-build manager:build  # 管理台 Web → 30-aidash-manager/web-dist
+pnpm -C 40-build manager:test   # 管理台自测（node --test）
+pnpm -C 40-build manager:start  # 启动管理台（默认 127.0.0.1:4280）
 ```
 
 **实测环境**：Windows 11（10.0.26100）、Node 24、pnpm 12.4.1、Edge 155（Chromium）。
@@ -289,7 +339,7 @@ pnpm -C 40-build test:runner    # 值守壳 aidash-runner 自测（node --test�
 | 服务端构建 | `pnpm -C 40-build build` | 成功，复制 **18** 个迁移 SQL 到 `dist` |
 | 前端构建 | `pnpm -C 40-build web:build` | 成功，Vite 构建 5.5 s（冷缓存） |
 | 旧值守壳构建（已弃用） | `pnpm -C 40-build cli:build` | 单文件 **729.0 KiB** |
-| 值守壳 `aidash-runner` 自测 | `pnpm -C 40-build test:runner` | **120 项全过**（`node --test`，零第三方依赖） |
+| 值守壳 `aidash-runner` 自测 | `pnpm -C 40-build test:runner` | **155 项全过**（`node --test`，零第三方依赖） |
 | 值守壳打包与安装 | `npm pack` + `npm i -g --prefix <临时目录> <tgz>` | 42 个文件 / **102.8 kB**；`--version`、`list --json`、`--help` 与 `aidash-watch` 别名均正常 |
 | 文档自检 | 三个检查脚本 | **24 / 15 / 6** 项全部通过，退出码 0 |
 | 启动冒烟（空库、临时端口 8795） | `node 40-build/10-aidash/dist/server/main.js` + HTTP 探测 | `/healthz` 200（`version=2.0.0`）、`/` 200、无令牌 `/mcp` **401**、`initialize` 200、`tools/list` 返回 **23** 个工具、空库迁移到 `schema_version=17` |

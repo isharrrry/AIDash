@@ -14,6 +14,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useDebounced } from '../hooks/useDebounced';
 import { usePolling } from '../hooks/usePolling';
 import { formatAbsolute, formatRelative } from '../lib/format';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { navigate, openCard } from '../lib/router';
 import { FeedCardRow, QuestionCardRow } from '../components/CardRow';
 import { EmptyState, ErrorBox, Loading } from '../components/Feedback';
@@ -131,7 +132,8 @@ export function ChannelPage({ channelKey }: { channelKey: string }): ReactElemen
     await Promise.all([channelState.reload(), cards.reload(), reloadChannels()]);
   };
 
-  usePolling(reloadAll, 30000);
+  // 通道详情、卡片与通道树每 10 秒对齐一次服务端；页面不可见时自动跳过。
+  usePolling(reloadAll, DEFAULT_POLL_MS);
 
   const quickAnswer = async (
     card: CardView,

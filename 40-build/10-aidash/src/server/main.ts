@@ -35,6 +35,7 @@ import { CardService } from './services/card-service.js';
 import { ChannelService } from './services/channel-service.js';
 import { DecisionService, WaitRegistry } from './services/decision-service.js';
 import { EnrichmentService } from './services/enrichment-service.js';
+import { ItemSuggestionService } from './services/item-suggestion-service.js';
 import { KbService } from './services/kb-service.js';
 import { LlmService } from './services/llm-service.js';
 import { MemoryDigestService } from './services/memory-digest-service.js';
@@ -231,6 +232,18 @@ export function buildContext(
     leaseSeconds: config.leaseSeconds,
   });
   const memory = new MemoryService({ db, memory: repos.memory, audit, clock });
+  // AI 建议需要任务/卡片/汇报/项目记忆四类数据，全部用现成仓储读取，
+  // 不新增缓存或快照：一次点击读一次，数据总是最新的。
+  const itemSuggestions = new ItemSuggestionService({
+    channels: repos.channels,
+    tasks: repos.tasks,
+    cards: repos.cards,
+    reports: repos.reports,
+    memory,
+    llm,
+    settings,
+    clock,
+  });
   const memoryDigest = new MemoryDigestService({
     db,
     digest: repos.memoryDigest,
@@ -285,6 +298,7 @@ export function buildContext(
       settings,
       llm,
       enrichment,
+      itemSuggestions,
     },
   };
 }

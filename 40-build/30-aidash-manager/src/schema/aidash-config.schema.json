@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aidash.local/schema/aidash-config.schema.json",
+  "title": "AIDash 配置文件（aidash.config.json）",
+  "description": "配置优先级（03 §3.7.1）：环境变量 > 本文件 > setting 表 > 内置默认。本 Schema 只描述第二层；键名与 src/server/config.ts 中的 pick(envKey, fileKey) 第二个参数一一对应，由 tests/config-schema.test.ts 强制同步。additionalProperties=false 是刻意的：拼错的键必须立刻报错，而不是静默回退到默认值——这一条由 config.ts 的 assertConfigFileShape 在启动时真正执行，本文件是唯一事实源。凭据（token / llm_api_key）不出现在 allowed 键里：它们只认环境变量或页面写入的加密文件，写进本文件会导致启动失败。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "token_label": {
+      "type": "string",
+      "minLength": 1,
+      "default": "owner",
+      "description": "令牌标签，只用于审计记录里区分是谁在用。",
+      "x-aidash-env": "AIDASH_TOKEN_LABEL"
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "default": "127.0.0.1",
+      "description": "监听地址。默认只听本机；改成 0.0.0.0 属于跨主机部署，需自行承担反代与日志泄露风险。",
+      "x-aidash-env": "AIDASH_HOST"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 8787,
+      "description": "HTTP 监听端口。",
+      "x-aidash-env": "AIDASH_PORT"
+    },
+    "db_path": {
+      "type": "string",
+      "minLength": 1,
+      "default": "./40-build/10-aidash/data/aidash.db",
+      "description": "SQLite 库路径。相对路径相对启动目录解析；启动日志会打印解析后的绝对路径。",
+      "x-aidash-env": "AIDASH_DB_PATH"
+    },
+    "allow_empty_db": {
+      "type": "boolean",
+      "default": false,
+      "description": "库文件不存在、但备份目录里有备份时，是否仍允许建空库。默认 false：这种情况十有八九是路径漂移，静默建空库会让人以为数据全没了。",
+      "x-aidash-env": "AIDASH_ALLOW_EMPTY_DB"
+    },
+    "kb_root": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "知识库根目录。留空 = 不启用知识库索引。",
+      "x-aidash-env": "AIDASH_KB_ROOT"
+    },
+    "kb_index_interval_seconds": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 86400,
+      "default": 300,
+      "description": "知识库增量索引间隔（秒）。",
+      "x-aidash-env": "AIDASH_KB_INDEX_INTERVAL"
+    },
+    "enrichment_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用 LLM 增强（卡片分析、知识库建议、记忆归纳）。未配置密钥时增强会直接 skipped，不会产生请求。",
+      "x-aidash-env": "AIDASH_ENRICHMENT_ENABLED"
+    },
+    "secret_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "页面写入的 LLM 密钥存放目录（加密文件 + 主密钥）。刻意与库分离，避免一次备份把密钥带出去。不填时取用户主目录下的 .aidash，并在启动时解析成绝对路径。",
+      "x-aidash-env": "AIDASH_SECRET_DIR"
+    },
+    "llm_endpoint": {
+      "type": "string",
+      "format": "uri",
+      "default": "https://api.deepseek.com/v1/chat/completions",
+      "description": "LLM Chat Completions 端点。页面设置里改的值会覆盖这里的默认。",
+      "x-aidash-env": "AIDASH_LLM_ENDPOINT"
+    },
+    "llm_model": {
+      "type": "string",
+      "minLength": 1,
+      "default": "deepseek-flash",
+      "description": "LLM 模型名。",
+      "x-aidash-env": "AIDASH_LLM_MODEL"
+    },
+    "llm_mode": {
+      "type": "string",
+      "enum": ["fast", "standard", "max"],
+      "default": "max",
+      "description": "LLM 生成模式。max 最完整，fast 最省 token。",
+      "x-aidash-env": "AIDASH_LLM_MODE"
+    },
+    "llm_timeout_ms": {
+      "type": "integer",
+      "minimum": 5000,
+      "maximum": 300000,
+      "default": 60000,
+      "description": "LLM 单次请求超时（毫秒）。同时约束测试连接与记忆归纳。",
+      "x-aidash-env": "AIDASH_LLM_TIMEOUT_MS"
+    },
+    "enrichment_timeout_ms": {
+      "type": "integer",
+      "minimum": 5000,
+      "maximum": 300000,
+      "deprecated": true,
+      "description": "旧变量名，与 llm_timeout_ms 等价；保留只为让老部署不用改脚本。两者同时存在时 llm_timeout_ms 优先。",
+      "x-aidash-env": "AIDASH_ENRICHMENT_TIMEOUT_MS"
+    },
+    "llm": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "LLM 配置的嵌套写法，等价于上面的 llm_* 扁平键。扁平键优先于嵌套键。刻意不含 api_key：密钥只认环境变量或页面写入的加密文件。",
+      "properties": {
+        "endpoint": { "type": "string", "format": "uri" },
+        "model": { "type": "string", "minLength": 1 },
+        "mode": { "type": "string", "enum": ["fast", "standard", "max"] }
+      }
+    },
+    "lease_seconds": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 3600,
+      "default": 900,
+      "description": "任务认领租约时长（秒）。租约到期后别的 harness 可以重新认领。",
+      "x-aidash-env": "AIDASH_LEASE_SECONDS"
+    },
+    "max_wait_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 300,
+      "default": 300,
+      "description": "question 卡阻塞等待上限（秒）。",
+      "x-aidash-env": "AIDASH_MAX_WAIT_SECONDS"
+    },
+    "mcp_wait_cap_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 300,
+      "default": 25,
+      "description": "MCP 侧 card.ask / card.wait 的等待上限（秒）。刻意比 max_wait_seconds 小：在 MCP 客户端判定工具超时之前主动返回 pending + card_id，让调用方可以继续做别的。",
+      "x-aidash-env": "AIDASH_MCP_WAIT_CAP_SECONDS"
+    },
+    "max_waiting_requests": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "default": 100,
+      "description": "同时挂起的等待请求上限，防止僵尸连接占满等待槽位。",
+      "x-aidash-env": "AIDASH_MAX_WAITING_REQUESTS"
+    },
+    "page_size_max": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 500,
+      "default": 200,
+      "description": "列表接口单页上限。",
+      "x-aidash-env": "AIDASH_PAGE_SIZE_MAX"
+    },
+    "rate_limit_per_minute": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000,
+      "default": 300,
+      "description": "每令牌的稳定请求速率（请求/分钟），REQ-FN-028 默认 300。与 rate_limit_burst 一起构成令牌桶：这个管长期平均，burst 管一口气能打多少。",
+      "x-aidash-env": "AIDASH_RATE_LIMIT_PER_MINUTE"
+    },
+    "rate_limit_burst": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "default": 60,
+      "description": "令牌桶容量，即允许的突发请求数，REQ-FN-028 默认 60。空闲时令牌按 rate_limit_per_minute 补充，最多攒到这么多。",
+      "x-aidash-env": "AIDASH_RATE_LIMIT_BURST"
+    },
+    "card_retention_days": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 3650,
+      "default": 365,
+      "description": "已归档卡片的保留天数。",
+      "x-aidash-env": "AIDASH_CARD_RETENTION_DAYS"
+    },
+    "log_retention_days": {
+      "type": "integer",
+      "minimum": 7,
+      "maximum": 365,
+      "default": 30,
+      "description": "日志保留天数。",
+      "x-aidash-env": "AIDASH_LOG_RETENTION_DAYS"
+    },
+    "audit_min_retention_days": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 3650,
+      "default": 730,
+      "description": "审计记录的最短保留天数。可以调长，不会因为调短而提前删除历史审计。",
+      "x-aidash-env": "AIDASH_AUDIT_MIN_RETENTION_DAYS"
+    },
+    "backup_dir": {
+      "type": "string",
+      "minLength": 1,
+      "default": "./40-build/10-aidash/backups",
+      "description": "迁移前备份与手动备份的存放目录。",
+      "x-aidash-env": "AIDASH_BACKUP_DIR"
+    },
+    "backup_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3650,
+      "default": 30,
+      "description": "迁移前备份的保留天数。只清理本程序生成的 pre-migrate-*.db，且至少保留 backup_min_keep 份与最新一份；人工备份和数据库本体不动。",
+      "x-aidash-env": "AIDASH_BACKUP_RETENTION_DAYS"
+    },
+    "backup_min_keep": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 5,
+      "description": "迁移前备份至少保留的份数。即使全部超过保留天数，也保留最新的这么多份；最新一份无条件保留。",
+      "x-aidash-env": "AIDASH_BACKUP_MIN_KEEP"
+    },
+    "static_dir": {
+      "type": "string",
+      "minLength": 1,
+      "default": "./40-build/10-aidash/dist/web",
+      "description": "Web 静态产物目录。",
+      "x-aidash-env": "AIDASH_STATIC_DIR"
+    },
+    "log_level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info",
+      "description": "日志级别。",
+      "x-aidash-env": "AIDASH_LOG_LEVEL"
+    },
+    "heartbeat_interval_seconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 3600,
+      "default": 60,
+      "description": "harness 心跳检查间隔（秒）。",
+      "x-aidash-env": "AIDASH_HEARTBEAT_INTERVAL_SECONDS"
+    },
+    "offline_threshold_seconds": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 10800,
+      "default": 180,
+      "description": "多久没心跳判定通道离线（秒）。",
+      "x-aidash-env": "AIDASH_OFFLINE_THRESHOLD_SECONDS"
+    }
+  }
+}

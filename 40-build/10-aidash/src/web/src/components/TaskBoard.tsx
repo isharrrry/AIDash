@@ -16,6 +16,7 @@ import { useApp } from '../AppContext';
 import { useAsync } from '../hooks/useAsync';
 import { useDebounced } from '../hooks/useDebounced';
 import { usePolling } from '../hooks/usePolling';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { openCard } from '../lib/router';
 import { stepTaskId } from '../lib/task-nav';
 import { TASK_TREE_MAX_DEPTH } from '../lib/task-tree';
@@ -93,7 +94,7 @@ export function TaskBoard({
    *
    * 为什么不直接整树 reload：用户滚动信息流时每读一条就重拉一次树，
    * 几十条消息会产生几十次请求，还会让任务树闪烁。这里只在本地把对应节点的
-   * 数字改成详情里算出的剩余值；30 秒轮询/手动刷新时再用服务端数据校准。
+   * 数字改成详情里算出的剩余值；10 秒轮询/手动刷新时再用服务端数据校准。
    */
   const [unreadOverrides, setUnreadOverrides] = useState<Record<string, number>>({});
   /**
@@ -169,7 +170,7 @@ export function TaskBoard({
     async () => {
       await Promise.all([tree.reload(), questions.reload()]);
     },
-    30000,
+    DEFAULT_POLL_MS,
     Boolean(scopeKey),
   );
 

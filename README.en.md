@@ -51,8 +51,11 @@ All four steps must land: **plan** (task tree), **claim** (lease-based), **do** 
 
 - **Six card types**: info, handoff, question, suggestion, status, artifact. Question cards support four body sections (background / goal / research / decision) plus primary and backup options.
 - **Bounded waiting**: `card.ask` returns `pending` + `card_id` after at most 25 seconds, so a question is never lost to an MCP client timeout.
-- **Task tree**: drag-and-drop moves, parent/child hierarchy, priority, category, lease-based claiming, evidence checks, deferral and risk flags.
+- **Task tree**: drag-and-drop moves, parent/child hierarchy, priority, category, lease-based claiming, evidence checks, deferral and risk flags; the "all channels" view spans channels.
+- **Discussion tasks**: `kind="discussion"` produces a plain-language answer; the detail view can split a discussion into multiple claimable child discussions, and each child automatically carries its parent question chain and conclusions.
+- **Items matrix**: treats sub-channels as items and aggregates tasks and reports by week/month; supports manual stage, owner, priority, tags and grouping, plus per-item next-step suggestions.
 - **External watch CLI**: a cross-platform CLI that polls for tasks, claims them, spawns a local harness, and writes back status and evidence. AIDash never pushes tasks.
+- **Unified manager**: a standalone `aidash-manager` (CLI + Web) for creating, configuring, starting/stopping multiple AIDash instances and runners, with logs and error summaries.
 - **Read-only knowledge base**: an OKF Markdown directory indexed with SQLite FTS5; the service never writes to it.
 - **Optional LLM enrichment**: any OpenAI-compatible endpoint; without a key it is silently skipped and never blocks the main flow.
 - **Append-only audit**: database triggers forbid UPDATE/DELETE; there is no delete API.
@@ -104,11 +107,35 @@ pnpm -C 40-build start:win    # recommended on Windows: pins DB / backups / stat
 
 Open `http://127.0.0.1:8787/` and enter the `AIDASH_TOKEN` value on the login page.
 
+> Web pages refresh automatically: AIDash data pages poll the server every 10 seconds by default (task tree, channels, items, memory, settings and health). In the manager, the overview refreshes every 4 seconds, logs every 2 seconds and the error summary every 5 seconds. Requests pause while the tab is hidden and resume when it becomes visible again.
+
 To connect Claude Code to AIDash:
 
 ```bash
 claude --mcp-config 40-build/00-platform/config/mcp.json
 ```
+
+### Optional: unified manager (`aidash-manager`)
+
+A standalone local CLI + web UI for managing multiple AIDash instances and runners (create, configure, start/stop, logs, error summary). It is separate from the AIDash web UI but uses the same frontend stack (React 19 + Vite).
+
+```bash
+pnpm -C 40-build install
+pnpm -C 40-build manager:build
+node 40-build/30-aidash-manager/bin/aidash-manager.mjs   # opens the browser automatically
+```
+
+Built-in runner templates: Claude Code, OpenAI Codex, DeepSeek `dsh` headless, Narnat CLI and custom argv. See [30-aidash-manager/README.md](40-build/30-aidash-manager/README.md).
+
+Release artifacts (three independent deliverables per release):
+
+| Artifact | Form | Purpose |
+|---|---|---|
+| `aidash-dist.tar.gz` | Release attachment | AIDash server + web; the target being managed |
+| `aidash-runner` | npm package (GitHub Packages `@isharrrry/aidash-runner`) + release `.tgz` | Watch runner: claims AIDash tasks and launches a local harness |
+| `aidash-manager` | npm package (GitHub Packages `@isharrrry/aidash-manager`) + release `.tgz` | Manager: local service registry, start/stop, config, logs |
+
+The manager is only a local entry point: it does not replace the AIDash server, nor the runner's task polling and harness execution. `aidash-runner` can be installed and run independently of the manager.
 
 ---
 
@@ -124,7 +151,9 @@ AIDash/
 ├─ 40-build/          The only place for code + the pnpm workspace root
 │  ├─ package.json / pnpm-lock.yaml / pnpm-workspace.yaml
 │  ├─ 00-platform/    Build config and tools: tsconfig / vitest / mcp.json / packaging scripts
-│  └─ 10-aidash/      Server + web + watch CLI sources; AGENTS.md and SKILL.md; tests
+│  ├─ 10-aidash/      Server + web + watch CLI sources; AGENTS.md and SKILL.md; tests
+│  ├─ 20-aidash-runner/  Runner CLI (zero-dependency npm package)
+│  └─ 30-aidash-manager/ Manager CLI + React web (multi-instance lifecycle, config, logs)
 ├─ 50-verify/         Verification records
 ├─ 60-deliver/        Deliverables
 ├─ 70-operate/        Operations records
@@ -165,6 +194,7 @@ AIDash/
 | Environment variables, config file, startup, backups | [60-deliver/配置模板.md](60-deliver/配置模板.md) |
 | MCP access, the 23 tools, runner interface | [04 §4, §7](30-design/设计文档包/04-接口设计说明.md) |
 | Runner install, config fields, subcommands | [40-build/20-aidash-runner/README.md](40-build/20-aidash-runner/README.md) |
+| Manager: multi-service lifecycle, config, logs, error summary | [40-build/30-aidash-manager/README.md](40-build/30-aidash-manager/README.md) |
 | Development environment, tests, contribution flow | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Agent behavior contract | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) |
 | Per-tool manual | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) |
@@ -185,7 +215,10 @@ pnpm -C 40-build coverage       # coverage report
 pnpm -C 40-build build          # server  → 40-build/10-aidash/dist/server
 pnpm -C 40-build web:build      # web     → 40-build/10-aidash/dist/web
 pnpm -C 40-build cli:build      # legacy watch CLI (deprecated) → dist/cli/aidash-watch.mjs
-pnpm -C 40-build test:runner    # runner CLI self-test (node --test, 97 tests)
+pnpm -C 40-build test:runner    # runner CLI self-test (node --test, 155 tests)
+pnpm -C 40-build manager:build  # manager web → 30-aidash-manager/web-dist
+pnpm -C 40-build manager:test   # manager self-test (node --test)
+pnpm -C 40-build manager:start  # start manager on 127.0.0.1:4280
 ```
 
 **Measured environment**: Windows 11 (10.0.26100), Node 24, pnpm 12.4.1, Edge 155 (Chromium).

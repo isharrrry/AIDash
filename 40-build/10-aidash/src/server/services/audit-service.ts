@@ -8,7 +8,7 @@ const SECRET_KEY = /token|secret|password|passwd|api[_-]?key|authorization/i;
  * 审计链校验结果的缓存时长。
  *
  * 为什么必须缓存：`verifyChain()` 会把整张 audit_log 读进内存并逐行重算 sha256。
- * 而设置页每 30 秒轮询一次 `/api/health`，原先每次轮询都要全量校验一次；
+ * 而设置页每 10 秒轮询一次 `/api/health`，原先每次轮询都要全量校验一次；
  * 审计表只增不删，行数越大，健康检查越慢，最终会把事件循环卡住。
  * 改成缓存后，健康检查最多每 10 分钟触发一次全量校验，其余请求只读快照。
  *

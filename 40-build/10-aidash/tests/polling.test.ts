@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { startPolling } from '../src/web/src/lib/polling.js';
+import { DEFAULT_POLL_MS, startPolling } from '../src/web/src/lib/polling.js';
 
 /**
  * 轮询调度器的纯函数测试。
@@ -12,6 +12,13 @@ import { startPolling } from '../src/web/src/lib/polling.js';
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe('DEFAULT_POLL_MS', () => {
+  it('页面默认轮询不超过 10 秒，满足“至少 10 秒自动刷新一次”的要求', () => {
+    expect(DEFAULT_POLL_MS).toBeGreaterThan(0);
+    expect(DEFAULT_POLL_MS).toBeLessThanOrEqual(10_000);
+  });
 });
 
 describe('startPolling', () => {

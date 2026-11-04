@@ -4,8 +4,10 @@ import type { CardView } from '../types';
 import { describeError } from '../api/client';
 import { listCards, markCardRead } from '../api/endpoints';
 import { useAsync } from '../hooks/useAsync';
+import { usePolling } from '../hooks/usePolling';
 import { FEED_PAGE_SIZE, toAscendingPage } from '../lib/feed-page';
 import { formatAbsolute, formatRelative, truncate } from '../lib/format';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { CardTypeBadge, PriorityBadge } from './Badge';
 import { CardDetailInline } from './CardDetailInline';
 import { ErrorBox, Loading } from './Feedback';
@@ -74,6 +76,10 @@ export function TaskFeed({
       }),
     [taskId, reloadNonce],
   );
+
+  // 详情页信息流每 10 秒对齐一次：runner 追加的状态/证据卡不用手动刷新。
+  // 已读集合与展开状态都在本地，reload 不会把用户正在看的那条收起来。
+  usePolling(() => reload(), DEFAULT_POLL_MS, Boolean(taskId));
 
   useEffect(() => {
     // 切任务时清空本地已读集合、展开集合与处理中集合，避免把 A 任务的状态带到 B 任务。

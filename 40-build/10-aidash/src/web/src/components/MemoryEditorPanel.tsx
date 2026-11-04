@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { MAX_MEMORY_CHARS } from '../../../shared/constants';
 import { ApiError, describeError } from '../api/client';
 import { useAsync } from '../hooks/useAsync';
+import { usePolling } from '../hooks/usePolling';
 import { formatAbsolute, formatRelative } from '../lib/format';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { ErrorBox, Loading } from './Feedback';
 import { Markdown } from './Markdown';
 import { useToast } from './Toast';
@@ -75,6 +77,10 @@ export function MemoryEditorPanel({
   useEffect(() => {
     if (!editing && memory.data) setDraft(memory.data.content_md);
   }, [editing, memory.data]);
+
+  // 记忆可能被其他 agent 通过 MCP 追加：10 秒对齐一次。编辑中的草稿由上面的
+  // editing 守卫保护；版本号跟着服务端走，保存时仍能触发乐观锁冲突提示。
+  usePolling(() => memory.reload(), DEFAULT_POLL_MS);
 
   const startEdit = (): void => {
     setDraft(memory.data?.content_md ?? '');

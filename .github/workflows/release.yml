@@ -39,9 +39,16 @@ jobs:
         run: |
           pnpm -C 40-build build
           pnpm -C 40-build web:build
+          pnpm -C 40-build manager:build
       - name: Pack runner
         run: |
           cd 40-build/20-aidash-runner
+          npm pkg set version="${TAG#v}"
+          npm pack
+      - name: Pack manager
+        run: |
+          cd 40-build/30-aidash-manager
+          npm pkg set version="${TAG#v}"
           npm pack
       - name: Pack server and web
         run: |
@@ -60,7 +67,7 @@ jobs:
       - name: Attach package to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$TAG" 40-build/20-aidash-runner/*.tgz aidash-dist.tar.gz aidash-dist.tar.gz.sha256 --repo "${{ github.repository }}" --clobber
+        run: gh release upload "$TAG" 40-build/20-aidash-runner/*.tgz 40-build/30-aidash-manager/*.tgz aidash-dist.tar.gz aidash-dist.tar.gz.sha256 --repo "${{ github.repository }}" --clobber
       - name: Publish runner to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,8 +77,25 @@ jobs:
           cd "$PKG_DIR"
           npm pkg set name="@isharrrry/aidash-runner"
           npm pkg set version="${TAG#v}"
+          npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
           printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
           if npm view "@isharrrry/aidash-runner@${TAG#v}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "Package version ${TAG#v} already exists; skipping publish."
+          else
+            npm publish --registry=https://npm.pkg.github.com
+          fi
+      - name: Publish manager to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PKG_DIR=$(mktemp -d)
+          cp -R 40-build/30-aidash-manager/. "$PKG_DIR"
+          cd "$PKG_DIR"
+          npm pkg set name="@isharrrry/aidash-manager"
+          npm pkg set version="${TAG#v}"
+          npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
+          printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
+          if npm view "@isharrrry/aidash-manager@${TAG#v}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
             echo "Package version ${TAG#v} already exists; skipping publish."
           else
             npm publish --registry=https://npm.pkg.github.com

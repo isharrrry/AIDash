@@ -14,6 +14,7 @@ import { useAsync } from '../hooks/useAsync';
 import { usePolling } from '../hooks/usePolling';
 import { harnessPresence } from '../../../shared/harness';
 import { formatAbsolute, formatBytes, formatRelative } from '../lib/format';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import type { HarnessPresence, HarnessView, HealthView, SettingsView } from '../types';
 import { AuditTable } from '../components/AuditTable';
 import { EmptyState, ErrorBox, Loading } from '../components/Feedback';
@@ -96,11 +97,11 @@ export function SettingsPage(): ReactElement {
   const settings = useAsync<SettingsView>(() => getSettings(), [refreshNonce]);
   const health = useAsync<HealthView>(() => getHealth(), [refreshNonce]);
   const harnesses = useAsync<HarnessView[]>(() => listHarnesses(), [refreshNonce]);
-  usePolling(() => health.reload(), 30000);
+  usePolling(() => health.reload(), DEFAULT_POLL_MS);
   // 心跳驱动的运行态（运行中/空闲在线）必须自己刷新：只在进页面时加载一次，
   // 用户会一直看到打开页面那一刻的旧状态，把“任务跑着”误判成“离线”。
   // 只在本分区可见时轮询，别让设置页其它分区为一张表持续发请求。
-  usePolling(() => harnesses.reload(), 10000, activeTab === 'harness');
+  usePolling(() => harnesses.reload(), DEFAULT_POLL_MS, activeTab === 'harness');
 
   const refresh = (): void => {
     // 审计查询的状态在 AuditTable 内部，只监听全局刷新计数；这里直接重载

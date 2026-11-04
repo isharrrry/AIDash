@@ -24,6 +24,7 @@ import type { CardService } from './services/card-service.js';
 import type { ChannelService } from './services/channel-service.js';
 import type { DecisionService } from './services/decision-service.js';
 import type { EnrichmentService } from './services/enrichment-service.js';
+import type { ItemSuggestionService } from './services/item-suggestion-service.js';
 import type { KbService } from './services/kb-service.js';
 import type { LlmService } from './services/llm-service.js';
 import type { MemoryDigestService } from './services/memory-digest-service.js';
@@ -75,5 +76,6 @@ export interface AppContext {
     settings: SettingsService;
     llm: LlmService;
     enrichment: EnrichmentService;
+    itemSuggestions: ItemSuggestionService;
   };
 }

@@ -36,6 +36,51 @@ export type HarnessStatus = 'online' | 'offline' | 'disabled';
 export type HarnessPresence = 'busy' | 'idle' | 'offline' | 'disabled';
 export type ChannelStatus = 'active' | 'archived';
 export type EnrichmentStatus = 'pending' | 'running' | 'done' | 'unavailable' | 'skipped';
+
+/**
+ * 事项的人工阶段。
+ *
+ * 与 channel.status（active/archived）正交：status 回答“这条对话还能不能继续用”，
+ * stage 回答“这件事现在推进到哪一步”。事项页允许用户自己标注阶段，
+ * 不拿任务状态推导——一个事项下可能同时有已完成和进行中的任务，推导结果会来回跳。
+ *
+ * `closed` 是人工收尾：事项页默认只显示未关闭事项，避免历史事项一直占满列表。
+ */
+export type ItemStage = 'planned' | 'in_progress' | 'waiting' | 'done' | 'closed';
+
+/**
+ * 事项（子通道）的人工属性。
+ *
+ * 为什么要落一份独立属性：任务字段属于“活”，通道字段属于“对话容器”，
+ * 而用户在事项页管理的是“这件事本身的负责人/优先级/标签”。三者生命周期不同，
+ * 不能为了少建一个 JSON 就把事项属性塞进任务或复用通道 status。
+ *
+ * 存储为 channel.meta_json；缺省字段按空值处理，兼容迁移前的历史通道。
+ */
+export interface ChannelMeta {
+  /** 负责人：单个名字，允许多人时用“、”分隔，这里不做结构化。 */
+  owner: string | null;
+  /** 事项优先级；null 表示未标注，不回退成 P2。 */
+  priority: Priority | null;
+  stage: ItemStage | null;
+  /** 分组：同一父通道下可再分的小组。 */
+  group: string | null;
+  participants: string[];
+  tags: string[];
+  iteration: string | null;
+  product: string | null;
+  category: string | null;
+  remark: string | null;
+  /**
+   * AIDash 生成的下一步建议；null 表示还没生成过。
+   *
+   * 存在事项属性里而不是任务/卡片上：建议针对“这件事接下来怎么推进”，
+   * 生命周期与事项一致；重新生成会整体替换，保留旧建议没有意义。
+   */
+  ai_suggestion: string | null;
+  /** 建议生成时间（ISO 8601）；null 表示没有可用建议。 */
+  ai_suggestion_at: string | null;
+}
 export type HandoffState = 'draft' | 'copied' | 'sent' | 'ack';
 export type StatusResult = 'success' | 'failed' | 'blocked' | 'partial';
 
@@ -69,6 +114,14 @@ export interface Channel {
    * 不是“用户刚改过什么”。null = 从未观测到 MCP 活动（历史通道）。
    */
   last_mcp_at: number | null;
+  /**
+   * 事项人工属性的 JSON 原文。
+   *
+   * 只有事项页会读写；其他调用方看到的是 ChannelView.meta 解析后的对象。
+   * 用 JSON 列而不是十个独立列：这些属性是用户自定义标签，字段还会继续长，
+   * 每次加一个字段都做迁移不划算；需要按属性筛选时数据量很小，前端过滤足够。
+   */
+  meta_json?: string | null;
   created_at: number;
   updated_at: number;
   archived_at: number | null;
@@ -531,8 +584,29 @@ export interface ChannelView {
   /** 通道内有 in_progress 任务（runner 正在执行）。用于把“运行中”与“空闲在线”区分开。 */
   agent_busy: boolean;
   last_active_at: string | null;
+  /** 事项页维护的人工属性；历史通道没有记录时返回空值对象而不是 null。 */
+  meta: ChannelMeta;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * 事项 AI 建议的生成结果。
+ *
+ * 同时回传检索统计而不是只给一段文本：用户能看到“这个建议不是拍脑袋”，
+ * 而是基于几次 grep 命中的任务/卡片/汇报/记忆；也给排查“为什么没建议”留依据。
+ */
+export interface ItemSuggestionView {
+  channel_key: string;
+  suggestion: string;
+  generated_at: string;
+  model: string | null;
+  /** 实际执行的 grep 次数（含初始关键词检索与模型追加的检索）。 */
+  greps: number;
+  /** 命中并喂给模型的证据条数。 */
+  evidence_count: number;
+  /** 去重后的检索词；便于用户理解建议依据。 */
+  queries: string[];
 }
 
 export interface AskAnswerResult {
@@ -673,7 +747,8 @@ export type PromptKey =
   | 'kb_suggestion'
   | 'memory_digest'
   | 'report'
-  | 'assistant_memory';
+  | 'assistant_memory'
+  | 'item_suggestion';
 
 export type MemoryDigestResult = 'ok' | 'empty' | 'unavailable' | 'failed';
 

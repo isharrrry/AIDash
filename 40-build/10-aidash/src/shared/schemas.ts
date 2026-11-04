@@ -5,7 +5,7 @@ import {
   MAX_MEMORY_LINE_CHARS,
   MAX_TASK_DESCRIPTION_CHARS,
 } from './constants.js';
-import type { CardType, Priority } from './types.js';
+import type { CardType, ItemStage, Priority } from './types.js';
 
 /**
  * 一份 schema 同时服务 MCP tools/list、REST 校验与 TS 类型（03 §1.3）。
@@ -14,6 +14,13 @@ import type { CardType, Priority } from './types.js';
  */
 
 export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const satisfies readonly Priority[];
+export const ITEM_STAGES = [
+  'planned',
+  'in_progress',
+  'waiting',
+  'done',
+  'closed',
+] as const satisfies readonly ItemStage[];
 export const CARD_TYPES = [
   'info',
   'handoff',

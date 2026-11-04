@@ -8,6 +8,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useDebounced } from '../hooks/useDebounced';
 import { usePolling } from '../hooks/usePolling';
 import { formatRelative, truncate } from '../lib/format';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { openCard } from '../lib/router';
 import { BatchBar } from '../components/BatchBar';
 import { CardTypeBadge, PriorityBadge } from '../components/Badge';
@@ -135,8 +136,8 @@ export function HomePage(): ReactElement {
     ]);
   }, [digest.reload, queue.reload, legacy.reload, reloadChannels]);
 
-  // SSE 未实现时的 30 秒轮询兜底；页面不可见时 hook 内部会跳过请求。
-  usePolling(reloadAll, 30000);
+  // SSE 未实现时的轮询兜底：10 秒一轮，页面不可见时 hook 内部会跳过请求。
+  usePolling(reloadAll, DEFAULT_POLL_MS);
 
   const updateFilters = (patch: Partial<CardFilters>): void => {
     setFilters((prev) => ({ ...prev, ...patch }));

@@ -41,8 +41,8 @@ export class ChannelRepo {
       .prepare(
         `INSERT INTO channel
          (id, channel_key, title, alias, harness_id, project, topic, workdir, status,
-          last_mcp_at, created_at, updated_at, archived_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          last_mcp_at, meta_json, created_at, updated_at, archived_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         channel.id,
@@ -58,6 +58,8 @@ export class ChannelRepo {
         channel.status,
         // 新建时通常还没发生 MCP 调用；随后入口的 touchMcp 会补上。
         channel.last_mcp_at,
+        // 新建通道不带事项属性；用户第一次在事项页编辑时才写入。
+        channel.meta_json ?? null,
         channel.created_at,
         channel.updated_at,
         channel.archived_at,
@@ -70,7 +72,14 @@ export class ChannelRepo {
     patch: Partial<
       Pick<
         Channel,
-        'title' | 'alias' | 'harness_id' | 'project' | 'topic' | 'workdir' | 'updated_at'
+        | 'title'
+        | 'alias'
+        | 'harness_id'
+        | 'project'
+        | 'topic'
+        | 'workdir'
+        | 'meta_json'
+        | 'updated_at'
       >
     >,
   ): void {
@@ -83,6 +92,7 @@ export class ChannelRepo {
       'project',
       'topic',
       'workdir',
+      'meta_json',
       'updated_at',
     ] as const) {
       if (patch[key] !== undefined) {

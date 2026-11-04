@@ -2,7 +2,16 @@ import { AppError } from '../../shared/errors.js';
 import { newId } from '../../shared/ids.js';
 import { assertNoSecrets } from '../../shared/secrets.js';
 import type { Clock } from '../../shared/time.js';
-import type { Channel, ChannelStatus, ChannelView, Ctx, Page } from '../../shared/types.js';
+import type {
+  Channel,
+  ChannelMeta,
+  ChannelStatus,
+  ChannelView,
+  Ctx,
+  ItemStage,
+  Page,
+  Priority,
+} from '../../shared/types.js';
 import type { ChannelRepo } from '../repos/channel-repo.js';
 import type { AuditService } from './audit-service.js';
 
@@ -217,6 +226,49 @@ export class ChannelService {
     return this.viewOf(this.channels.get(channel.id)!, now);
   }
 
+  /**
+   * 修改事项人工属性。
+   *
+   * 与 setAlias 一样是明确的用户编辑动作：patch 中出现的字段才覆盖，
+   * 空字符串归一成 null（用户清空输入框 = 清掉这个属性）。
+   * 数组整体替换而不是追加——参与者/标签在页面上是一个逗号分隔输入框，
+   * 追加语义会让用户删掉一个标签后再保存变成“删不掉”。
+   */
+  setMeta(key: string, patch: Partial<ChannelMeta>, ctx: Ctx): ChannelView {
+    const channel = this.getByKeyOrThrow(key);
+    const current = parseChannelMeta(channel.meta_json);
+    const next: ChannelMeta = { ...current };
+    if (patch.owner !== undefined) next.owner = cleanMetaText(patch.owner);
+    if (patch.priority !== undefined) next.priority = cleanPriority(patch.priority);
+    if (patch.stage !== undefined) next.stage = cleanStage(patch.stage);
+    if (patch.group !== undefined) next.group = cleanMetaText(patch.group);
+    if (patch.participants !== undefined) {
+      next.participants = cleanMetaList(patch.participants);
+    }
+    if (patch.tags !== undefined) next.tags = cleanMetaList(patch.tags);
+    if (patch.iteration !== undefined) next.iteration = cleanMetaText(patch.iteration);
+    if (patch.product !== undefined) next.product = cleanMetaText(patch.product);
+    if (patch.category !== undefined) next.category = cleanMetaText(patch.category);
+    if (patch.remark !== undefined) next.remark = cleanMetaText(patch.remark);
+    if (patch.ai_suggestion !== undefined) {
+      next.ai_suggestion = cleanSuggestion(patch.ai_suggestion);
+    }
+    if (patch.ai_suggestion_at !== undefined) {
+      next.ai_suggestion_at = cleanIsoStamp(patch.ai_suggestion_at);
+    }
+
+    const now = this.clock.now();
+    const currentJson = JSON.stringify(current);
+    const nextJson = JSON.stringify(next);
+    if (nextJson !== currentJson) {
+      this.channels.updateMeta(channel.id, { meta_json: nextJson, updated_at: now });
+      this.audit.record(ctx, 'channel.meta', 'ok', 'channel', channel.id, {
+        channel_key: channel.channel_key,
+        fields: Object.keys(patch),
+      });
+    }
+    return this.viewOf(this.channels.get(channel.id)!, now);
+  }
 }
 
 export function parseChannelKey(key: string): {
@@ -229,6 +281,111 @@ export function parseChannelKey(key: string): {
     host: parts[0] ?? null,
     project: parts[1] ?? null,
     topic: parts.slice(2).join('/') || null,
+  };
+}
+
+const EMPTY_CHANNEL_META: ChannelMeta = {
+  owner: null,
+  priority: null,
+  stage: null,
+  group: null,
+  participants: [],
+  tags: [],
+  iteration: null,
+  product: null,
+  category: null,
+  remark: null,
+  ai_suggestion: null,
+  ai_suggestion_at: null,
+};
+
+const ITEM_STAGE_VALUES: readonly ItemStage[] = [
+  'planned',
+  'in_progress',
+  'waiting',
+  'done',
+  'closed',
+];
+const PRIORITY_VALUES: readonly Priority[] = ['P0', 'P1', 'P2', 'P3'];
+
+function cleanMetaText(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** 建议允许比普通属性长，但仍要截断：模型偶尔会整段复述证据，列宽放不下。 */
+const MAX_SUGGESTION_CHARS = 2000;
+
+function cleanSuggestion(value: string | null | undefined): string | null {
+  const text = cleanMetaText(value);
+  return text ? text.slice(0, MAX_SUGGESTION_CHARS) : null;
+}
+
+/** 生成时间只接受可解析的 ISO/日期字符串，坏值按 null 处理。 */
+function cleanIsoStamp(value: string | null | undefined): string | null {
+  const text = cleanMetaText(value);
+  if (!text || Number.isNaN(Date.parse(text))) return null;
+  return text;
+}
+
+function cleanMetaList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+    if (result.length >= 30) break;
+  }
+  return result;
+}
+
+function cleanPriority(value: unknown): Priority | null {
+  return PRIORITY_VALUES.includes(value as Priority) ? (value as Priority) : null;
+}
+
+function cleanStage(value: unknown): ItemStage | null {
+  return ITEM_STAGE_VALUES.includes(value as ItemStage) ? (value as ItemStage) : null;
+}
+
+/**
+ * 把 meta_json 解析成稳定形状。
+ *
+ * 解析失败/字段类型不对时按空值处理而不是抛错：事项属性是纯展示层数据，
+ * 一条坏 JSON 不应该让整页通道列表 500。未知字段直接丢弃，避免旧版本
+ * 或手改数据库留下的杂项被原样回传给前端。
+ */
+export function parseChannelMeta(raw: string | null | undefined): ChannelMeta {
+  // 每次都新建数组：空值对象会被调用方当默认值合并，共享同一个数组引用
+  // 会在后续就地修改时污染其他通道的默认值。
+  if (!raw) return { ...EMPTY_CHANNEL_META, participants: [], tags: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ...EMPTY_CHANNEL_META, participants: [], tags: [] };
+  }
+  const row =
+    typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : {};
+  return {
+    owner: cleanMetaText(row.owner as string | null | undefined),
+    priority: cleanPriority(row.priority),
+    stage: cleanStage(row.stage),
+    group: cleanMetaText(row.group as string | null | undefined),
+    participants: cleanMetaList(row.participants),
+    tags: cleanMetaList(row.tags),
+    iteration: cleanMetaText(row.iteration as string | null | undefined),
+    product: cleanMetaText(row.product as string | null | undefined),
+    category: cleanMetaText(row.category as string | null | undefined),
+    remark: cleanMetaText(row.remark as string | null | undefined),
+    ai_suggestion: cleanSuggestion(row.ai_suggestion as string | null | undefined),
+    ai_suggestion_at: cleanIsoStamp(row.ai_suggestion_at as string | null | undefined),
   };
 }
 
@@ -273,6 +430,7 @@ export function toChannelView(
       row.last_active_at === null || row.last_active_at === undefined
         ? null
         : new Date(row.last_active_at).toISOString(),
+    meta: parseChannelMeta(row.meta_json),
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };

@@ -1,0 +1,38 @@
+{
+  "name": "aidash-manager",
+  "version": "0.1.0",
+  "description": "AIDash 服务与 runner 的本地管理台：CLI + Web，多实例启停、配置、日志与异常摘要",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/the50w/aidash.git",
+    "directory": "40-build/30-aidash-manager"
+  },
+  "homepage": "https://gitee.com/the50w/aidash/tree/master/40-build/30-aidash-manager",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "aidash-manager": "bin/aidash-manager.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "web-dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\"",
+    "build": "node scripts/build.mjs",
+    "start": "node bin/aidash-manager.mjs"
+  },
+  "keywords": [
+    "aidash",
+    "manager",
+    "runner",
+    "harness",
+    "console",
+    "dashboard"
+  ]
+}

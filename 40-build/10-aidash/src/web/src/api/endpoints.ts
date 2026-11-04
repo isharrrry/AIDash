@@ -12,11 +12,13 @@ import type {
   CardStatus,
   CardType,
   CardView,
+  ChannelMeta,
   ChannelView,
   Digest,
   HandoffState,
   HarnessView,
   HealthView,
+  ItemSuggestionView,
   KbDocView,
   KbSearchHit,
   KbSearchResult,
@@ -115,6 +117,47 @@ export function updateChannelAlias(
     method: 'PATCH',
     body: { alias },
   });
+}
+
+/**
+ * 修改事项人工属性。
+ *
+ * 与服务端同形：只传要改的字段；null / 空数组表示清空。
+ * 复用通道 PATCH 而不是单开端点：属性和别名/归档一样，都是通道上的用户编辑动作。
+ */
+export function updateChannelMeta(
+  channelIdOrKey: string,
+  meta: Partial<ChannelMeta>,
+): Promise<ChannelView> {
+  return apiRequest<ChannelView>(`/channels/${encodeURIComponent(channelIdOrKey)}`, {
+    method: 'PATCH',
+    body: { meta },
+  });
+}
+
+/** 生成建议可能跑多轮检索与 LLM，响应里带回写库后的通道视图。 */
+export interface GenerateSuggestionResult extends ItemSuggestionView {
+  channel: ChannelView;
+}
+
+/**
+ * 让 AIDash 为某个事项生成一段 AI 建议。
+ *
+ * 服务端会先 grep 本事项的任务/卡片/汇报/项目记忆，模型还可以追加检索词；
+ * 最后把建议写进 channel.meta_json 并返回。前端不需要再发一次 PATCH。
+ */
+export function generateChannelSuggestion(
+  channelIdOrKey: string,
+): Promise<GenerateSuggestionResult> {
+  return apiRequest<GenerateSuggestionResult>(
+    `/channels/${encodeURIComponent(channelIdOrKey)}/suggestion`,
+    {
+      method: 'POST',
+      // 生成包含多轮 grep 与最多 4 次 LLM 调用，20 秒默认超时必然误杀；
+      // 5 分钟覆盖“模型较慢 + 多轮检索”的极端情况。
+      timeoutMs: 300_000,
+    },
+  );
 }
 
 export function listCards(query: CardQuery = {}): Promise<Page<CardView>> {
@@ -320,6 +363,40 @@ export function getTaskTree(
   );
 }
 
+/** 事项页一次取回全量任务用的单页条数；与服务端 page_size 上限一致。 */
+const ALL_TASKS_PAGE_SIZE = 200;
+
+export interface AllTasksResult {
+  items: TaskView[];
+  /** 服务端总数；items.length 小于它说明被 maxPages 截断。 */
+  total: number;
+  truncated: boolean;
+}
+
+/**
+ * 跨通道取任务（事项页的时间轴需要一次看到所有通道）。
+ *
+ * 为什么不逐通道调 /tasks/tree：事项页要按“通道 × 周期”聚合，逐通道会产生
+ * N 次请求，而且树形结构可由 parent_id 在前端重建；列表接口一次性带齐
+ * 状态时间线字段，足够算出每个周期的记录。
+ *
+ * maxPages 是保护阈值：本地库通常只有几百条任务，几页就取完；若数据量异常，
+ * 宁可明确告诉用户“只看了前 N 页”，也不要在页面里无限拉取。
+ */
+export async function listAllTasks(maxPages = 20): Promise<AllTasksResult> {
+  const items: TaskView[] = [];
+  let total = 0;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const result = await apiRequest<Page<TaskView>>(
+      `/tasks${buildQuery({ page, page_size: ALL_TASKS_PAGE_SIZE })}`,
+    );
+    items.push(...result.items);
+    total = result.total;
+    if (!result.has_more) break;
+  }
+  return { items, total, truncated: items.length < total };
+}
+
 /**
  * 主通道记忆。
  *
@@ -473,6 +550,33 @@ export function listReports(query: ReportQuery = {}): Promise<Page<ReportView>> 
       page_size: query.page_size,
     })}`,
   );
+}
+
+/** 汇报列表的服务端单页上限是 50，事项页需要跨很多周期精确匹配，必须翻页取全。 */
+const ALL_REPORTS_PAGE_SIZE = 50;
+
+export interface AllReportsResult {
+  items: ReportView[];
+  total: number;
+  truncated: boolean;
+}
+
+/**
+ * 取回全部汇报（事项详情按 period_key 精确匹配，不能只看最近一页）。
+ *
+ * maxPages 是保护阈值：正常只有六种周期各一份，一年也就几十条；
+ * 若历史数据异常，宁可少显示更早周期的汇报，也不在页面里无限翻页。
+ */
+export async function listAllReports(maxPages = 20): Promise<AllReportsResult> {
+  const items: ReportView[] = [];
+  let total = 0;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const result = await listReports({ page, page_size: ALL_REPORTS_PAGE_SIZE });
+    items.push(...result.items);
+    total = result.total;
+    if (!result.has_more) break;
+  }
+  return { items, total, truncated: items.length < total };
 }
 
 /**

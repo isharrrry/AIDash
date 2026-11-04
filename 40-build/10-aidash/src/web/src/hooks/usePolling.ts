@@ -2,11 +2,12 @@ import { useEffect, useRef } from 'react';
 import { startPolling } from '../lib/polling';
 
 /**
- * 轮询兜底（设计文档 §2.7：SSE 不可用时退化为 30 秒轮询）。
+ * 轮询兜底（设计文档 §2.7：SSE 不可用时退化为轮询）。
  *
- * 调度逻辑放在 lib/polling.ts 的纯函数里：上一次请求没结束时跳过本轮，
- * 停止后不再发新请求，页面不可见时只跳过当前轮。这里只负责把最新回调和
- * 生命周期接上去；回调放进 ref，避免每次渲染都重建计时器。
+ * 页面数据默认按 `DEFAULT_POLL_MS`（10 秒）刷新一轮，各页面按需传入更短的
+ * 间隔（如汇报生成中的进度）；调度逻辑放在 lib/polling.ts 的纯函数里：
+ * 上一次请求没结束时跳过本轮，停止后不再发新请求，页面不可见时只跳过当前轮。
+ * 这里只负责把最新回调和生命周期接上去；回调放进 ref，避免每次渲染都重建计时器。
  */
 export function usePolling(
   callback: () => void | Promise<void>,

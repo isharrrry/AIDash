@@ -210,7 +210,7 @@ export function adminRouter(ctx: AppContext): Router {
         version: SERVER_VERSION,
         uptime_seconds: Math.round((Date.now() - ctx.startedAt) / 1000),
         db: { path: ctx.config.dbPath, size_bytes: dbSizeBytes(ctx) },
-        // 只读缓存：设置页 30 秒轮询一次，不能每次都重算整条哈希链。
+        // 只读缓存：设置页 10 秒轮询一次，不能每次都重算整条哈希链。
         // 需要“此刻是否断链”的确定答案时，调用 POST /api/audit/verify。
         audit_chain: ctx.services.audit.verifyCached(),
         waiting_requests: ctx.services.decisions.waitingCount(),

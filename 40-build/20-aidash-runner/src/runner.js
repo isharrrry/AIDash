@@ -53,6 +53,10 @@ const REGISTER_TIMEOUT_MS = 20_000;
 const HEARTBEAT_TIMEOUT_MS = 15_000;
 const CLAIM_TIMEOUT_MS = 30_000;
 const STATUS_RECENT_LIMIT = 50;
+// 空闲轮询摘要的 INFO 间隔。每次轮询都写 INFO 会在 5 秒节奏下刷屏；
+// 但只写 DEBUG 又会让用户以为 runner 没在抓任务。这里保留“首轮/结果变化/每 5 分钟”
+// 三种可见时机，既能看到活动，也不会把日志变成噪声。
+const POLL_INFO_INTERVAL_MS = 5 * 60_000;
 
 export class RunnerState {
   constructor({ instanceId, harnessId, name, mode, startedAt }) {
@@ -458,6 +462,11 @@ export async function runService(options) {
           registered = true;
           state.registered = true;
           logger.info(`已注册 harness：${config.harness_id}`);
+          logger.info(
+            `轮询配置：间隔 ${config.poll_interval_seconds}s，通道过滤 ${
+              (config.channels ?? []).length > 0 ? config.channels.join(', ') : '全部'
+            }，命令规则 ${config.commands.length} 条`,
+          );
           // 注册后立刻报一拍 idle：服务端刚把 busy 重置为 0，主动确认一次
           // 比等满一个心跳间隔更快让设置页显示“空闲在线”。
           void sendHeartbeat();
@@ -668,6 +677,24 @@ async function pollCycle(ctx) {
   ctx.logger.debug(
     `拉取完成：pending ${tasks.length}，计划 ${planned.length}，跳过 ${skipped.length}`,
   );
+  // INFO 摘要：首轮一定写（让用户确认 runner 真的在抓任务）、结果变化时写
+  // （有新任务/跳过项变化）、其余每 5 分钟保底一次。只写 DEBUG 的话，
+  // 管理台日志页默认只能看到“已启动/已注册”，看起来像 runner 没干活。
+  const pollNumber = ctx.state.stats.polls;
+  const pollSignature = `${tasks.length}/${planned.length}/${skipped.length}`;
+  const pollNow = Date.now();
+  if (
+    pollNumber === 1 ||
+    pollSignature !== ctx.lastPollInfoSignature ||
+    pollNow - (ctx.lastPollInfoAt ?? 0) >= POLL_INFO_INTERVAL_MS
+  ) {
+    ctx.lastPollInfoAt = pollNow;
+    ctx.lastPollInfoSignature = pollSignature;
+    const channelFilter = (config.channels ?? []).length > 0 ? config.channels.join(', ') : '全部';
+    ctx.logger.info(
+      `轮询抓取：第 ${pollNumber} 次，pending ${tasks.length}，计划 ${planned.length}，跳过 ${skipped.length}（通道过滤：${channelFilter}）`,
+    );
+  }
 
   for (const candidate of planned) {
     if (ctx.signal.aborted) return false;

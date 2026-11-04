@@ -38,6 +38,7 @@ aidash.config.json
 # ===== 构建产物 =====
 # dist 含服务端编译结果、Web 静态产物与 CLI 单文件，均由 pnpm 重建，不入库。
 dist/
+/40-build/30-aidash-manager/web-dist/
 coverage/
 node_modules/
 *.vsix

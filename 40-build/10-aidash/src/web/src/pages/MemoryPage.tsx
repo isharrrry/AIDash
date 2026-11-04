@@ -5,7 +5,9 @@ import type { AssistantMemoryView, MemoryProjectView } from '../types';
 import { getAssistantMemory, getProjectMemory, listMemoryProjects } from '../api/endpoints';
 import { useApp } from '../AppContext';
 import { useAsync } from '../hooks/useAsync';
+import { usePolling } from '../hooks/usePolling';
 import { downloadMarkdown } from '../lib/download';
+import { DEFAULT_POLL_MS } from '../lib/polling';
 import { formatAbsolute, formatRelative, formatStamp } from '../lib/format';
 import {
   memoryDisplayName,
@@ -48,6 +50,8 @@ export function MemoryPage(): ReactElement {
   const { channels, currentChannelKey, currentProject, refreshNonce } = useApp();
   const notify = useToast().notify;
   const projects = useAsync<MemoryProjectView[]>(() => listMemoryProjects(), [refreshNonce]);
+  // 记忆可能被其他 agent 通过 MCP 改写：列表每 10 秒对齐一次，行数与修改时间不会一直停在打开页面那一刻。
+  usePolling(() => projects.reload(), DEFAULT_POLL_MS);
   // 默认“最近修改”：用户最常回到刚整理过的项目；另外两种排序用于按名字找/按规模比。
   const [sort, setSort] = useState<MemorySortKey>('updated');
 

@@ -359,7 +359,11 @@ test('pull 立即唤醒长轮询并执行任务；logs 可读；stop 优雅退�
     assert.equal(logs.code, 0, logs.stderr);
     assert.equal(logs.json.data.instance_id, 'it-runner');
     assert.ok(logs.json.data.lines.length > 3);
-    assert.match(logs.json.data.lines.join('\n'), /已连接 AIDash|已注册 harness/);
+    const logText = logs.json.data.lines.join('\n');
+    assert.match(logText, /已连接 AIDash|已注册 harness/);
+    // 首轮轮询必须有 INFO 摘要：管理台默认日志级别下也能确认 runner 在抓任务。
+    assert.match(logText, /轮询配置：.*通道过滤/);
+    assert.match(logText, /轮询抓取：第 \d+ 次，pending \d+，计划 \d+，跳过 \d+/);
 
     const stop = await runCli(['stop', '--data-dir', ctx.dataDir, '--json'], ctx.opts());
     assert.equal(stop.code, 0);

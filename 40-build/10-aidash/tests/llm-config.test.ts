@@ -86,7 +86,7 @@ function expectErrorMessage(fn: () => unknown, code: string, message: string): v
 }
 
 describe('LLM 配置', () => {
-  it('默认指向 deepseek-flash 的 max 模式，并自带五类提示词', () => {
+  it('默认指向 deepseek-flash 的 max 模式，并自带六类提示词', () => {
     const h = createHarness();
     harness = h;
     const view = h.ctx.services.settings.view();
@@ -104,6 +104,7 @@ describe('LLM 配置', () => {
       'memory_digest',
       'report',
       'assistant_memory',
+      'item_suggestion',
     ]);
     for (const prompt of view.prompts) {
       expect(prompt.system.trim().length).toBeGreaterThan(0);

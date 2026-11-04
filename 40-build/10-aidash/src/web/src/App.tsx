@@ -7,6 +7,7 @@ import { AppContext } from './AppContext';
 import type { AppContextValue } from './AppContext';
 import { useAsync } from './hooks/useAsync';
 import { usePolling } from './hooks/usePolling';
+import { DEFAULT_POLL_MS } from './lib/polling';
 import { closeCard, channelPath, navigate, useRoute } from './lib/router';
 import type { RouteName } from './lib/router';
 import { CardDrawer } from './components/CardDrawer';
@@ -16,6 +17,7 @@ import { TopBar } from './components/TopBar';
 import type { ConnectionState } from './components/TopBar';
 import { ChannelPage } from './pages/ChannelPage';
 import { HomePage } from './pages/HomePage';
+import { ItemsPage } from './pages/ItemsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -87,11 +89,12 @@ function AppShell(): ReactElement {
   }, [token, notify]);
 
   // 轮询等待两个请求都结束；上一次没回来时调度器会跳过下一拍，避免 in-flight 叠加。
+  // 通道树/健康状态是全局数据，10 秒一轮，新通道和新任务不用手动刷新。
   usePolling(
     async () => {
       await Promise.all([channelsState.reload(), health.reload()]);
     },
-    30000,
+    DEFAULT_POLL_MS,
     token !== null,
   );
 
@@ -177,7 +180,8 @@ function AppShell(): ReactElement {
   };
 
   // 任务树/通道页是宽表格工作区，放宽内容区上限；其他页面保持 1440 的阅读宽度。
-  const wideLayout = route.name === 'tasks' || route.name === 'channel';
+  const wideLayout =
+    route.name === 'tasks' || route.name === 'items' || route.name === 'channel';
 
   return (
     <AppContext.Provider value={contextValue}>
@@ -251,6 +255,8 @@ function RouteView({
       return <HomePage />;
     case 'tasks':
       return <TasksPage />;
+    case 'items':
+      return <ItemsPage />;
     case 'memory':
       return <MemoryPage />;
     case 'reports':

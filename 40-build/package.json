@@ -19,9 +19,13 @@
     "start": "cd .. && node 40-build/10-aidash/dist/server/main.js",
     "start:win": "powershell -NoProfile -File 10-aidash/scripts/start-aidash.ps1",
     "build": "tsc -p 00-platform/config/tsconfig.server.json && node 00-platform/tools/copy-server-assets.mjs",
-    "typecheck": "tsc -p 00-platform/config/tsconfig.server.json --noEmit && tsc -p 10-aidash/src/web/tsconfig.json --noEmit",
+    "typecheck": "tsc -p 00-platform/config/tsconfig.server.json --noEmit && tsc -p 10-aidash/src/web/tsconfig.json --noEmit && pnpm --filter aidash-manager-web exec tsc --noEmit",
     "web:dev": "pnpm --filter aidash-web dev",
     "web:build": "pnpm --filter aidash-web build",
+    "manager:dev": "pnpm --filter aidash-manager-web dev",
+    "manager:build": "node 30-aidash-manager/scripts/build.mjs",
+    "manager:start": "node 30-aidash-manager/bin/aidash-manager.mjs",
+    "manager:test": "pnpm --filter aidash-manager test",
     "cli:build": "node 00-platform/tools/build-cli.mjs",
     "test": "vitest run --config 00-platform/config/vitest.config.ts",
     "test:watch": "vitest --config 00-platform/config/vitest.config.ts",
@@ -29,7 +33,7 @@
     "test:deploy": "node --test \"../60-deliver/scripts/tests/*.test.mjs\"",
     "coverage": "vitest run --config 00-platform/config/vitest.config.ts --coverage",
     "e2e": "node ../50-verify/e2e/run.mjs",
-    "check": "pnpm typecheck && pnpm test && pnpm test:runner && pnpm test:deploy"
+    "check": "pnpm typecheck && pnpm test && pnpm test:runner && pnpm test:manager && pnpm test:deploy"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
