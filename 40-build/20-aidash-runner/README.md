@@ -2,7 +2,7 @@
 
 AIDash 的本地值守壳：轮询 `pending` 任务 → 认领 → 在本地执行 harness 命令 → 发证据卡 → `complete/fail/block`。
 
-- **零第三方运行时依赖**，只用 Node 内置模块；ESM；Node >= 24。
+- **零第三方运行时依赖**，只用 Node 内置模块；ESM；Node >= 20。
 - 适合挂在开发机/构建机上，让本地 CLI（claude、codex、脚本）自动接 AIDash 任务。
 - MCP 令牌只从环境变量/令牌文件读取，不写配置、不写 registry、不写日志。
 
@@ -459,7 +459,7 @@ stderr 的不同故障误判成同因。这样做的目标不是“猜根因”�
 ## 开发与测试
 
 ```bash
-npm test                 # node --test "tests/*.test.js"（单元 + 真实 HTTP fake MCP 集成）
+npm test                 # node --test（单元 + 真实 HTTP fake MCP 集成）
 ```
 
 测试不访问真实 8787 服务；所有实例数据目录都指向临时目录，不读写 `~/.aidash`。

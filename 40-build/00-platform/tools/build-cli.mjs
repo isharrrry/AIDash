@@ -4,7 +4,7 @@
  *
  * 为什么用 esbuild bundle：
  * - 值守壳可能被拷到没有 node_modules 的机器上运行，单文件产物最省事；
- * - target=node24 与根 package.json 的 engines 一致，不额外做降级转译；
+ * - target=node20 与根 package.json 的 engines 一致，不额外做降级转译；
  * - banner 保留 shebang：esbuild 只有在 bundle 时才方便把 shebang 放在第一行，
  *   否则源码里的 shebang 经过格式转换可能被挤到中间，执行时不被识别。
  */
@@ -27,7 +27,7 @@ await build({
   platform: 'node',
   format: 'esm',
   bundle: true,
-  target: 'node24',
+  target: 'node20',
   sourcemap: true,
   banner: {
     js: '#!/usr/bin/env node',

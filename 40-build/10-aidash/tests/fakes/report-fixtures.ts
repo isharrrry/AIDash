@@ -1,6 +1,6 @@
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { expect } from 'vitest';
+import { listenOnFetchSafePort } from './listen.js';
 
 import { AppError } from '../../src/shared/errors.js';
 import type { ReportRow, ReportRunRow, ReportRepo } from '../../src/server/repos/report-repo.js';
@@ -67,8 +67,7 @@ export async function startFakeLlm(delayMs = 0): Promise<FakeLlm> {
       else respond();
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as AddressInfo).port;
+  const { port } = await listenOnFetchSafePort(server);
   return {
     base: `http://127.0.0.1:${port}/v1`,
     requests,

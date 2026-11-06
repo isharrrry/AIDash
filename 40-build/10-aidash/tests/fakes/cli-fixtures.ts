@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import http, { type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, vi } from 'vitest';
@@ -11,6 +10,7 @@ import type { ExecResult } from '../../src/cli/exec.js';
 import type { Logger } from '../../src/cli/log.js';
 import { AidashMcpClient } from '../../src/cli/mcp-client.js';
 import type { TaskItem } from '../../src/cli/mcp-parse.js';
+import { listenOnFetchSafePort } from './listen.js';
 
 /**
  * cli-branches 拆分后的共享夹具：
@@ -143,11 +143,7 @@ export async function startFakeMcp(handler: FakeHandler): Promise<FakeMcpServer>
     });
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
-  });
-  const { port } = server.address() as AddressInfo;
+  const { port } = await listenOnFetchSafePort(server);
 
   return {
     endpoint: `http://127.0.0.1:${port}/mcp`,

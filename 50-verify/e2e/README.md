@@ -56,7 +56,7 @@ E2E 把这四件事自动化了：
 
 | 项 | 要求 | 说明 |
 |---|---|---|
-| Node | ≥ 24 | 依赖全局 `WebSocket` 与 `fetch`，不引入第三方 CDP 客户端 |
+| Node | ≥ 22（Node 20 需 `--experimental-websocket`） | 依赖全局 `WebSocket` 与 `fetch`，不引入第三方 CDP 客户端 |
 | 构建产物 | `dist/server/main.js` + `dist/web/index.html` | 缺失时脚本会直接提示先跑 `pnpm -C 40-build build && pnpm -C 40-build web:build` |
 | 浏览器 | Microsoft Edge | 默认查 `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` 与 `Program Files` 两处；换机器用 `AIDASH_EDGE_PATH` 指定 |
 | 端口 | 任意空闲端口 | 服务端与 DevTools 各取一个，由内核分配，不与 8787/9222 冲突 |
@@ -88,7 +88,7 @@ E2E 把这四件事自动化了：
 ## 6 几个刻意的设计取舍
 
 **为什么不用 Playwright / Puppeteer。**
-技术规格清单 §6.4 已锁定「E2E 用 Edge 无头 + CDP」。引入 Playwright 会带进一份上百 MB 的浏览器和一条新的版本矩阵，与「单机自用、零第三方运行时依赖」的定位冲突。Node 24 自带 `WebSocket`，CDP 本身只是 JSON over WebSocket，四样本事（导航、求值、截图、收控制台错误）已经够用。
+技术规格清单 §6.4 已锁定「E2E 用 Edge 无头 + CDP」。引入 Playwright 会带进一份上百 MB 的浏览器和一条新的版本矩阵，与「单机自用、零第三方运行时依赖」的定位冲突。Node 22+ 自带全局 `WebSocket`（Node 20 需加 `--experimental-websocket`），CDP 本身只是 JSON over WebSocket，四样本事（导航、求值、截图、收控制台错误）已经够用。
 
 **为什么造数据走 REST 而不是直接插 SQLite。**
 直接插库会绕过 service 层，造出来的数据可能违反业务不变量（任务缺事件行、卡片缺未读计数）。那样用例就跑在一个现实中不存在的状态上，通过也没有意义。

@@ -1,6 +1,6 @@
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { listenOnFetchSafePort } from './fakes/listen.js';
 import {
   api,
   createHarness,
@@ -86,8 +86,7 @@ async function startFakeLlm(options: {
       );
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as AddressInfo).port;
+  const { port } = await listenOnFetchSafePort(server);
   return {
     base: `http://127.0.0.1:${port}/v1`,
     requests,

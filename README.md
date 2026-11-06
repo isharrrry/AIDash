@@ -4,7 +4,7 @@
 
 > AIDash 不是另一个 Agent 框架，也不替 harness 干活。它把“人、Agent、Agent 与 Agent 之间怎么交换判断和证据”做成一层可自托管的交互协议：harness 继续专注模型、工具和执行环境，AIDash 负责把决策、任务、证据、记忆和值守串起来。
 
-**平台与依赖**：Windows / Linux / macOS（代码跨平台，实测环境见下文）；Node.js ≥ 24、pnpm 12.4.1；存储用内置 SQLite，不需要额外安装数据库。
+**平台与依赖**：Windows / Linux / macOS（代码跨平台，实测环境见下文）；Node.js ≥ 20.19（运行时最低 Node 20；前端构建使用 Vite 8，要求 20.19+）、pnpm 12.4.1；存储用内置 SQLite，不需要额外安装数据库。
 
 ---
 
@@ -100,7 +100,7 @@ AIDash 把这些收敛为 **卡片、任务树、通道、记忆、值守壳** �
 ### A. 启动 AIDash（服务端 + Web）
 
 ```bash
-# 依赖：Node ≥ 24、pnpm 12.4.1
+# 依赖：Node ≥ 20.19、pnpm 12.4.1
 pnpm -C 40-build install
 
 # 构建服务端 + 前端
@@ -298,6 +298,7 @@ AIDash/
 | 值守壳安装、配置字段与子命令 | [40-build/20-aidash-runner/README.md](40-build/20-aidash-runner/README.md) |
 | 管理台：多 AIDash/runner 启停、配置、日志与异常 | [40-build/30-aidash-manager/README.md](40-build/30-aidash-manager/README.md) |
 | 开发环境、测试、贡献流程 | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| 什么算证据、测试够不够、什么时候可以发版 | [50-verify/测试与质量约束.md](50-verify/测试与质量约束.md) |
 | Agent 行为契约 | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) |
 | 逐工具手册 | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) |
 | 需求与验收判据（唯一需求事实源） | [20-spec/需求与验收判据文档.md](20-spec/需求与验收判据文档.md) |
@@ -312,7 +313,7 @@ AIDash/
 
 ```bash
 pnpm -C 40-build typecheck      # 服务端 + Web 类型检查
-pnpm -C 40-build test           # 60 个测试文件 / 541 个用例通过 + 1 个跳过
+pnpm -C 40-build test           # 67 个测试文件 / 596 个用例通过 + 1 个跳过
 pnpm -C 40-build coverage       # 覆盖率
 pnpm -C 40-build build          # 服务端 → 40-build/10-aidash/dist/server
 pnpm -C 40-build web:build      # 前端   → 40-build/10-aidash/dist/web
@@ -323,18 +324,18 @@ pnpm -C 40-build manager:test   # 管理台自测（node --test）
 pnpm -C 40-build manager:start  # 启动管理台（默认 127.0.0.1:4280）
 ```
 
-**实测环境**：Windows 11（10.0.26100）、Node 24、pnpm 12.4.1、Edge 155（Chromium）。
+**实测环境**：Windows 11（10.0.26100）、Node 24.16 与 Node 20.20（兼容性验证）、pnpm 12.4.1、Edge 155（Chromium）。
 
 ---
 
 ## 实测验证
 
-以下数字均为 2026-10-25 在本仓库实测，**没有一行是估计**；命令都可复算。
+以下数字均为本仓库实测，**没有一行是估计**；命令都可复算。测试那一行是 2026-11-06 复测，其余各项仍是 2026-10-25 的结果。
 
 | 验证项 | 命令 | 结果 |
 |---|---|---|
 | 类型检查 | `pnpm -C 40-build typecheck` | 退出码 0 |
-| 单元 / 集成测试 | `pnpm -C 40-build test` | **60 个文件 / 541 个用例通过 + 1 个跳过** |
+| 单元 / 集成测试 | `pnpm -C 40-build test` | **67 个文件 / 596 个用例通过 + 1 个跳过**（2026-11-06 复测） |
 | 覆盖率 | `pnpm -C 40-build coverage` | 语句 **83.94%** / 分支 73.51% / 函数 90.57% / 行 86.39% |
 | 服务端构建 | `pnpm -C 40-build build` | 成功，复制 **18** 个迁移 SQL 到 `dist` |
 | 前端构建 | `pnpm -C 40-build web:build` | 成功，Vite 构建 5.5 s（冷缓存） |

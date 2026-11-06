@@ -4,7 +4,7 @@
 
 > AIDash is not another agent framework, and it does not do the harness's job. It turns "how humans, agents, and agents exchange judgments and evidence" into a self-hosted interaction protocol: harnesses keep focusing on models, tools, and execution environments, while AIDash connects decisions, tasks, evidence, memory, and the watch runner.
 
-**Platform & dependencies**: Windows / Linux / macOS (cross-platform code; see the measured environment below); Node.js ≥ 24, pnpm 12.4.1; storage is embedded SQLite — no separate database to install.
+**Platform & dependencies**: Windows / Linux / macOS (cross-platform code; see the measured environment below); Node.js ≥ 20.19 (runtime minimum is Node 20; the web build uses Vite 8, which requires 20.19+), pnpm 12.4.1; storage is embedded SQLite — no separate database to install.
 
 ---
 
@@ -86,7 +86,7 @@ All four steps must land: **plan** (task tree), **claim** (lease-based), **do** 
 ## Quick start
 
 ```bash
-# Requirements: Node >= 24, pnpm 12.4.1
+# Requirements: Node >= 20.19, pnpm 12.4.1
 pnpm -C 40-build install
 
 # Build the server and the web app
@@ -196,6 +196,7 @@ AIDash/
 | Runner install, config fields, subcommands | [40-build/20-aidash-runner/README.md](40-build/20-aidash-runner/README.md) |
 | Manager: multi-service lifecycle, config, logs, error summary | [40-build/30-aidash-manager/README.md](40-build/30-aidash-manager/README.md) |
 | Development environment, tests, contribution flow | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| What counts as evidence, when tests suffice, when a release may ship | [50-verify/测试与质量约束.md](50-verify/测试与质量约束.md) |
 | Agent behavior contract | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) |
 | Per-tool manual | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) |
 | Requirements and acceptance criteria (single source of truth) | [20-spec/需求与验收判据文档.md](20-spec/需求与验收判据文档.md) |
@@ -210,7 +211,7 @@ The `20-spec/` and `30-design/` documents are written in Chinese. When documents
 
 ```bash
 pnpm -C 40-build typecheck      # type-check server + web
-pnpm -C 40-build test           # 38 test files / 471 passed + 1 skipped
+pnpm -C 40-build test           # 67 test files / 596 passed + 1 skipped
 pnpm -C 40-build coverage       # coverage report
 pnpm -C 40-build build          # server  → 40-build/10-aidash/dist/server
 pnpm -C 40-build web:build      # web     → 40-build/10-aidash/dist/web
@@ -221,18 +222,18 @@ pnpm -C 40-build manager:test   # manager self-test (node --test)
 pnpm -C 40-build manager:start  # start manager on 127.0.0.1:4280
 ```
 
-**Measured environment**: Windows 11 (10.0.26100), Node 24, pnpm 12.4.1, Edge 155 (Chromium).
+**Measured environment**: Windows 11 (10.0.26100), Node 24.16 and Node 20.20 (compatibility check), pnpm 12.4.1, Edge 155 (Chromium).
 
 ---
 
 ## Measured verification
 
-Every number below was measured in this repository on 2026-10-25. **None of them is an estimate**; each command can be re-run.
+Every number below was measured in this repository. **None of them is an estimate**; each command can be re-run. The test row was re-measured on 2026-11-06; the remaining rows date from 2026-10-25.
 
 | Verification | Command | Result |
 |---|---|---|
 | Type check | `pnpm -C 40-build typecheck` | exit code 0 |
-| Unit / integration tests | `pnpm -C 40-build test` | **38 files / 471 passed + 1 skipped** |
+| Unit / integration tests | `pnpm -C 40-build test` | **67 files / 596 passed + 1 skipped** (re-measured 2026-11-06) |
 | Coverage | `pnpm -C 40-build coverage` | statements **83.94%** / branches 73.51% / functions 90.57% / lines 86.39% |
 | Server build | `pnpm -C 40-build build` | succeeded; **18** migration SQL files copied to `dist` |
 | Web build | `pnpm -C 40-build web:build` | succeeded; Vite build in 5.5 s (cold cache) |

@@ -1,9 +1,9 @@
-import { once } from 'node:events';
 import fs from 'node:fs';
-import type { AddressInfo } from 'node:net';
+import http from 'node:http';
+import type { Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import type { Server } from 'node:http';
+import { listenOnFetchSafePort } from './fakes/listen.js';
 import type { Express } from 'express';
 import { taskCreateSchema } from '../src/shared/schemas.js';
 import { ManualClock } from '../src/shared/time.js';
@@ -113,9 +113,8 @@ export interface RunningApp {
 
 export async function startApp(harness: TestHarness): Promise<RunningApp> {
   const app = createApp(harness.ctx, harness.log);
-  const server = app.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address() as AddressInfo;
+  const server = http.createServer(app);
+  const address = await listenOnFetchSafePort(server);
   return {
     base: `http://127.0.0.1:${address.port}`,
     server,

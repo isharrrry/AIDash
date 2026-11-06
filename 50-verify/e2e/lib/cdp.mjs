@@ -5,7 +5,7 @@
  * 1. 技术规格清单 §6.4 已锁定「E2E 用 Edge 无头 + CDP」，引入 Playwright 会带来
  *    一份上百 MB 的浏览器和一条新的版本矩阵，与「单机自用、零第三方运行时依赖」
  *    的定位冲突；
- * 2. Node 24 自带全局 WebSocket，CDP 本身只是 JSON over WebSocket，
+ * 2. Node 22+ 自带全局 WebSocket（Node 20 需加 --experimental-websocket），CDP 本身只是 JSON over WebSocket，
  *    「导航 + 求值 + 截图 + 收集控制台错误」这四样本事已经覆盖 UI 回归的全部断言面。
  *
  * 影响范围：
@@ -47,6 +47,11 @@ export class CdpClient {
    * @param {string} url 形如 ws://127.0.0.1:9222/devtools/page/<id>
    */
   static async connect(url) {
+    if (typeof WebSocket === 'undefined') {
+      throw new Error(
+        '当前 Node 没有全局 WebSocket：请使用 Node 22+，或在 Node 20 上以 --experimental-websocket 运行 E2E。',
+      );
+    }
     const socket = new WebSocket(url);
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`连接 CDP 超时：${url}`)), COMMAND_TIMEOUT_MS);

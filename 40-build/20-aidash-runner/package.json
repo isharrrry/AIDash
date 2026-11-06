@@ -11,7 +11,7 @@
   },
   "homepage": "https://gitee.com/the50w/aidash/tree/master/40-build/20-aidash-runner",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20.0.0"
   },
   "bin": {
     "aidash-runner": "bin/aidash-runner.mjs",
@@ -25,7 +25,7 @@
     "PLAN.md"
   ],
   "scripts": {
-    "test": "node --test \"tests/*.test.js\""
+    "test": "node --test"
   },
   "keywords": [
     "aidash",

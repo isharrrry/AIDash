@@ -253,15 +253,19 @@ if (-not (Test-Path $packageJson)) {
 
 foreach ($commandName in @('node', 'pnpm', 'taskkill')) {
   if (-not (Get-Command $commandName -ErrorAction SilentlyContinue)) {
-    Fail-Step "缺少命令：$commandName。" '安装 Node >= 24 与 pnpm 12.x，并确保它们在 PATH 里。'
+    Fail-Step "缺少命令：$commandName。" '安装 Node >= 20.19 与 pnpm 12.x，并确保它们在 PATH 里。'
   }
 }
 
 [string]$nodeVersion = (& node --version | Select-Object -First 1)
+$nodeParts = $nodeVersion.TrimStart('v') -split '\.'
 $nodeMajor = 0
-[void][int]::TryParse(($nodeVersion.TrimStart('v') -split '\.')[0], [ref]$nodeMajor)
-if ($nodeMajor -lt 24) {
-  Fail-Step "Node 版本是 $nodeVersion，低于要求的 >= 24。" '升级 Node 后重跑；服务端使用 Node 24 的 ESM 与原生依赖。'
+$nodeMinor = 0
+[void][int]::TryParse($nodeParts[0], [ref]$nodeMajor)
+if ($nodeParts.Count -gt 1) { [void][int]::TryParse($nodeParts[1], [ref]$nodeMinor) }
+# 20.19 是 Vite 8 的最低要求；服务端本身在 Node 20.0 即可运行，但部署脚本会重建前端。
+if ($nodeMajor -lt 20 -or ($nodeMajor -eq 20 -and $nodeMinor -lt 19)) {
+  Fail-Step "Node 版本是 $nodeVersion，低于要求的 >= 20.19。" '升级 Node 后重跑；服务端使用 Node 的 ESM 与原生依赖，前端构建要求 Vite 8（Node >= 20.19）。'
 }
 
 if (-not (Test-Path (Join-Path $buildRoot 'node_modules'))) {

@@ -18,6 +18,7 @@ AIDash 是一个**面向多 Agent 协作的交互与决策层**，也是一个�
 | [40-build/10-aidash/AGENTS.md](40-build/10-aidash/AGENTS.md) | harness 行为契约；改 MCP 工具、发卡或任务状态机前必读 |
 | [40-build/10-aidash/skills/aidash-mcp/SKILL.md](40-build/10-aidash/skills/aidash-mcp/SKILL.md) | 23 个 MCP 工具的调用示例 |
 | [30-design/设计文档包/README-核心包.md](30-design/设计文档包/README-核心包.md) | 设计文档的权威顺序 |
+| [50-verify/测试与质量约束.md](50-verify/测试与质量约束.md) | 什么算证据、测试层级与各自的盲区、准出条件、需求追踪义务、缺陷定级 |
 
 需求看 `20-spec/`，设计看 `30-design/`；文档与代码冲突时先判断哪边错了，不要默默改代码。
 

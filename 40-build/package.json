@@ -11,7 +11,7 @@
   },
   "homepage": "https://gitee.com/the50w/aidash",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20.19.0"
   },
   "packageManager": "pnpm@12.4.1",
   "scripts": {
@@ -30,14 +30,14 @@
     "test": "vitest run --config 00-platform/config/vitest.config.ts",
     "test:watch": "vitest --config 00-platform/config/vitest.config.ts",
     "test:runner": "pnpm --filter aidash-runner test",
-    "test:deploy": "node --test \"../60-deliver/scripts/tests/*.test.mjs\"",
+    "test:deploy": "node --test ../60-deliver/scripts/tests/process-guard.test.mjs",
     "coverage": "vitest run --config 00-platform/config/vitest.config.ts --coverage",
     "e2e": "node ../50-verify/e2e/run.mjs",
-    "check": "pnpm typecheck && pnpm test && pnpm test:runner && pnpm test:manager && pnpm test:deploy"
+    "check": "pnpm typecheck && pnpm test && pnpm test:runner && pnpm manager:test && pnpm test:deploy"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "better-sqlite3": "13.0.3",
+    "better-sqlite3": "12.6.0",
     "express": "5.3.0",
     "yaml": "2.9.1",
     "zod": "4.6.7"
@@ -45,14 +45,14 @@
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
     "@types/express": "5.0.6",
-    "@types/node": "^24.10.0",
-    "@vitest/coverage-v8": "5.0.5",
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "4.1.12",
     "esbuild": "0.28.2",
-    "jsdom": "^30.1.3",
+    "jsdom": "^29.1.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tsx": "^4.20.0",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "4.1.12"
   }
 }

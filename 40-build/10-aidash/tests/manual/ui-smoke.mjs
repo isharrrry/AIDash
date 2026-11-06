@@ -3,7 +3,7 @@
  *
  * 为什么不用 Playwright/Chrome DevTools MCP：
  * 这台机器只装了 Edge，DevTools MCP 写死了 Chrome stable 的路径；
- * Node 24 自带 WebSocket，直接连 Edge 的 CDP 就足够验证 DOM 与键盘交互。
+ * Node 22+ 自带全局 WebSocket（Node 20 需加 --experimental-websocket），直接连 Edge 的 CDP 就足够验证 DOM 与键盘交互。
  *
  * 调用方：只由开发者在验证 UI 时用 `node` 直接执行，不被应用代码 import。
  * 影响范围：只读页面 DOM + 通过网页接口提交两张测试决策卡；不改服务端 API、不改数据库 schema。
