@@ -83,6 +83,7 @@ jobs:
           npm pkg set name="@isharrrry/aidash-runner"
           npm pkg set version="${TAG#v}"
           npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
+          npm pkg set homepage="https://github.com/${{ github.repository }}/tree/main/40-build/20-aidash-runner"
           printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
           if npm view "@isharrrry/aidash-runner@${TAG#v}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
             echo "Package version ${TAG#v} already exists; skipping publish."
@@ -99,6 +100,7 @@ jobs:
           npm pkg set name="@isharrrry/aidash-manager"
           npm pkg set version="${TAG#v}"
           npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
+          npm pkg set homepage="https://github.com/${{ github.repository }}/tree/main/40-build/30-aidash-manager"
           printf '@isharrrry:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
           if npm view "@isharrrry/aidash-manager@${TAG#v}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
             echo "Package version ${TAG#v} already exists; skipping publish."
