@@ -50,13 +50,20 @@ async function startExternalHealth(port) {
   };
 }
 
-async function withServer(fn) {
+/** 静态页夹具：前端产物 web-dist 是构建产物（已 gitignore），测试不能依赖它存在。 */
+function makeWebDist() {
+  const dir = tempDir('am-api-webdist-');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><html><body><div id="root"></div></body></html>');
+  return dir;
+}
+
+async function withServer(fn, { webDist = makeWebDist() } = {}) {
   const home = tempDir('am-api-');
   const root = tempDir('am-api-repo-');
   fs.mkdirSync(path.join(root, 'server', 'dist', 'server'), { recursive: true });
   fs.writeFileSync(path.join(root, 'server', 'dist', 'server', 'main.js'), '');
   const store = new ManagerStore({ home }).init();
-  const started = await startManagerServer({ store, host: '127.0.0.1', port: 0 });
+  const started = await startManagerServer({ store, host: '127.0.0.1', port: 0, webDist });
   const call = async (pathname, { method = 'GET', body, token = true, cookie } = {}) => {
     const headers = { accept: 'application/json' };
     if (token) headers['x-aidash-manager-token'] = started.token;
@@ -94,6 +101,15 @@ test('未带令牌的 API 返回 401，静态页面可打开', async () => {
     assert.equal(redirect.status, 302);
     assert.match(redirect.headers.get('set-cookie') ?? '', /aidash_manager_token=/);
   });
+});
+
+test('web-dist 缺失时返回占位页而不是 404', async () => {
+  const emptyDir = path.join(tempDir('am-api-nodist-'), 'absent');
+  await withServer(async ({ started }) => {
+    const index = await fetch(`${started.url}/`);
+    assert.equal(index.status, 200);
+    assert.match(await index.text(), /Web 前端尚未构建/);
+  }, { webDist: emptyDir });
 });
 
 test('端口探测：空闲端口可用，已占用端口返回 EADDRINUSE', async () => {

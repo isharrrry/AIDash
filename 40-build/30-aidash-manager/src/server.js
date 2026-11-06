@@ -88,8 +88,8 @@ function redirect(res, location, extraHeaders = {}) {
   res.end();
 }
 
-function sendStatic(req, res, pathname) {
-  if (!fs.existsSync(path.join(WEB_DIST, 'index.html'))) {
+function sendStatic(req, res, pathname, webDist = WEB_DIST) {
+  if (!fs.existsSync(path.join(webDist, 'index.html'))) {
     const body = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AIDash Manager</title>
 <body style="font-family:system-ui,sans-serif;max-width:720px;margin:60px auto;line-height:1.7">
 <h1>AIDash Manager ${VERSION}</h1>
@@ -111,8 +111,8 @@ function sendStatic(req, res, pathname) {
     return;
   }
   if (decoded === '/' || decoded === '') decoded = '/index.html';
-  const filePath = path.resolve(WEB_DIST, `.${decoded}`);
-  const rel = path.relative(WEB_DIST, filePath);
+  const filePath = path.resolve(webDist, `.${decoded}`);
+  const rel = path.relative(webDist, filePath);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not Found');
@@ -127,7 +127,7 @@ function sendStatic(req, res, pathname) {
   }
   if (!stat || !stat.isFile()) {
     // SPA fallback：前端使用 hash/局部状态，未知路径一律回 index.html。
-    target = path.join(WEB_DIST, 'index.html');
+    target = path.join(webDist, 'index.html');
     try {
       stat = fs.statSync(target);
     } catch {
@@ -150,7 +150,7 @@ function sendStatic(req, res, pathname) {
   fs.createReadStream(target).pipe(res);
 }
 
-export function createManagerServer({ store, host, port, startedAt }) {
+export function createManagerServer({ store, host, port, startedAt, webDist = WEB_DIST }) {
   const managerToken = store.webToken();
   const apiContext = createApiContext({ store, host, port, startedAt });
 
@@ -215,7 +215,7 @@ export function createManagerServer({ store, host, port, startedAt }) {
       res.end('Method Not Allowed');
       return;
     }
-    sendStatic(req, res, url.pathname);
+    sendStatic(req, res, url.pathname, webDist);
   });
 
   return {
@@ -254,6 +254,7 @@ export async function startManagerServer({
   host = DEFAULT_WEB_HOST,
   port = DEFAULT_WEB_PORT,
   strictPort = false,
+  webDist = WEB_DIST,
 }) {
   const startedAt = new Date().toISOString();
   let lastError = null;
@@ -261,7 +262,7 @@ export async function startManagerServer({
   for (let offset = 0; offset < tries; offset += 1) {
     const candidate = port + offset;
     if (candidate > 65535) break;
-    const { server, token, url, setPort } = createManagerServer({ store, host, port: candidate, startedAt });
+    const { server, token, url, setPort } = createManagerServer({ store, host, port: candidate, startedAt, webDist });
     try {
       const address = await listenOnce(server, host, candidate);
       const actualPort = typeof address === 'object' && address ? address.port : candidate;
