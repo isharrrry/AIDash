@@ -235,6 +235,22 @@ node 40-build/30-aidash-manager/bin/aidash-manager.mjs templates
 | `aidash-runner` | npm 包（GitHub Packages `@isharrrry/aidash-runner`）+ Release `.tgz` | 值守壳：向 AIDash 认领任务并拉起本地 harness |
 | `aidash-manager` | npm 包（GitHub Packages `@isharrrry/aidash-manager`）+ Release `.tgz` | 管理台：本机登记服务、启停、配置、看日志 |
 
+安装（两个包都在 GitHub Packages，需要带 `read:packages` 的 GitHub 令牌）：
+
+```bash
+npm i -g @isharrrry/aidash-runner --registry=https://npm.pkg.github.com
+npm i -g @isharrrry/aidash-manager --registry=https://npm.pkg.github.com
+```
+
+首次使用前写一次 `~/.npmrc`：
+
+```
+@isharrrry:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<GitHub 令牌>
+```
+
+不想配置 GitHub 认证时，直接装 Release 附件里的 tgz 即可：`npm i -g ./aidash-runner-<版本>.tgz`。
+
 管理台只是本机管理入口，不替代 AIDash 服务端，也不替代 runner 的任务轮询与 harness 执行；`aidash-runner` 可以脱离管理台独立安装运行。
 
 数据目录默认 `~/.aidash/manager`（可用 `AIDASH_MANAGER_HOME` 覆盖），服务清单与令牌分开存放（`manager.json` / `secrets.json`，0600）。完整用法见 [30-aidash-manager/README.md](40-build/30-aidash-manager/README.md)。

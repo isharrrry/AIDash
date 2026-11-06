@@ -135,6 +135,22 @@ Release artifacts (three independent deliverables per release):
 | `aidash-runner` | npm package (GitHub Packages `@isharrrry/aidash-runner`) + release `.tgz` | Watch runner: claims AIDash tasks and launches a local harness |
 | `aidash-manager` | npm package (GitHub Packages `@isharrrry/aidash-manager`) + release `.tgz` | Manager: local service registry, start/stop, config, logs |
 
+Install (both packages live on GitHub Packages and need a GitHub token with `read:packages`):
+
+```bash
+npm i -g @isharrrry/aidash-runner --registry=https://npm.pkg.github.com
+npm i -g @isharrrry/aidash-manager --registry=https://npm.pkg.github.com
+```
+
+Write `~/.npmrc` once before the first install:
+
+```
+@isharrrry:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<your GitHub token>
+```
+
+Without GitHub auth, install the `.tgz` shipped as a release asset instead: `npm i -g ./aidash-runner-<version>.tgz`.
+
 The manager is only a local entry point: it does not replace the AIDash server, nor the runner's task polling and harness execution. `aidash-runner` can be installed and run independently of the manager.
 
 ---

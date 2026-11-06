@@ -62,8 +62,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          NOTES=".github/release-notes-${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            NOTES=".github/release-notes-v2.0.0.md"
+            echo "::warning::未找到 $TAG 的专属发布说明，回退到 v2.0.0 模板"
+          fi
           gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
-            gh release create "$TAG" --repo "${{ github.repository }}" --title "AIDash $TAG" --notes-file .github/release-notes-v2.0.0.md
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "AIDash $TAG" --notes-file "$NOTES"
       - name: Attach package to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

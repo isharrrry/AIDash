@@ -9,7 +9,7 @@
     "url": "https://gitee.com/the50w/aidash.git",
     "directory": "40-build/30-aidash-manager"
   },
-  "homepage": "https://gitee.com/the50w/aidash/tree/master/40-build/30-aidash-manager",
+  "homepage": "https://gitee.com/the50w/aidash/tree/main/40-build/30-aidash-manager",
   "engines": {
     "node": ">=20.0.0"
   },
