@@ -7,9 +7,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/the50w/aidash.git"
+    "url": "https://github.com/isharrrry/AIDash.git"
   },
-  "homepage": "https://gitee.com/the50w/aidash",
+  "homepage": "https://github.com/isharrrry/AIDash",
   "engines": {
     "node": ">=20.19.0"
   },

@@ -2,6 +2,8 @@
 
 **English** | [中文](README.md)
 
+[![Release](https://github.com/isharrrry/AIDash/actions/workflows/release.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
+
 > AIDash is not another agent framework, and it does not do the harness's job. It turns "how humans, agents, and agents exchange judgments and evidence" into a self-hosted interaction protocol: harnesses keep focusing on models, tools, and execution environments, while AIDash connects decisions, tasks, evidence, memory, and the watch runner.
 
 **Platform & dependencies**: Windows / Linux / macOS (cross-platform code; see the measured environment below); Node.js ≥ 20.19 (runtime minimum is Node 20; the web build uses Vite 8, which requires 20.19+), pnpm 12.4.1; storage is embedded SQLite — no separate database to install.
@@ -131,9 +133,9 @@ Release artifacts (three independent deliverables per release):
 
 | Artifact | Form | Purpose |
 |---|---|---|
-| `aidash-dist.tar.gz` | Release attachment | AIDash server + web; the target being managed |
-| `aidash-runner` | npm package (GitHub Packages `@isharrrry/aidash-runner`) + release `.tgz` | Watch runner: claims AIDash tasks and launches a local harness |
-| `aidash-manager` | npm package (GitHub Packages `@isharrrry/aidash-manager`) + release `.tgz` | Manager: local service registry, start/stop, config, logs |
+| `aidash-dist.tar.gz` | [Release attachment](https://github.com/isharrrry/AIDash/releases/latest) | AIDash server + web; the target being managed |
+| `aidash-runner` | npm package [GitHub Packages `@isharrrry/aidash-runner`](https://github.com/isharrrry/AIDash/pkgs/npm/aidash-runner) + release `.tgz` | Watch runner: claims AIDash tasks and launches a local harness |
+| `aidash-manager` | npm package [GitHub Packages `@isharrrry/aidash-manager`](https://github.com/isharrrry/AIDash/pkgs/npm/aidash-manager) + release `.tgz` | Manager: local service registry, start/stop, config, logs |
 
 Install (both packages live on GitHub Packages and need a GitHub token with `read:packages`):
 
@@ -149,7 +151,7 @@ Write `~/.npmrc` once before the first install:
 //npm.pkg.github.com/:_authToken=<your GitHub token>
 ```
 
-Without GitHub auth, install the `.tgz` shipped as a release asset instead: `npm i -g ./aidash-runner-<version>.tgz`.
+Without GitHub auth, install the `.tgz` shipped as a [release asset](https://github.com/isharrrry/AIDash/releases/latest) instead: `npm i -g ./aidash-runner-<version>.tgz`.
 
 The manager is only a local entry point: it does not replace the AIDash server, nor the runner's task polling and harness execution. `aidash-runner` can be installed and run independently of the manager.
 

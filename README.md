@@ -2,6 +2,8 @@
 
 **中文** | [English](README.en.md)
 
+[![Release](https://github.com/isharrrry/AIDash/actions/workflows/release.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
+
 > AIDash 不是另一个 Agent 框架，也不替 harness 干活。它把“人、Agent、Agent 与 Agent 之间怎么交换判断和证据”做成一层可自托管的交互协议：harness 继续专注模型、工具和执行环境，AIDash 负责把决策、任务、证据、记忆和值守串起来。
 
 **平台与依赖**：Windows / Linux / macOS（代码跨平台，实测环境见下文）；Node.js ≥ 20.19（运行时最低 Node 20；前端构建使用 Vite 8，要求 20.19+）、pnpm 12.4.1；存储用内置 SQLite，不需要额外安装数据库。
@@ -231,9 +233,9 @@ node 40-build/30-aidash-manager/bin/aidash-manager.mjs templates
 
 | 发布物 | 形态 | 作用 |
 |---|---|---|
-| `aidash-dist.tar.gz` | Release 附件 | AIDash 服务端 + Web，是被管理的目标 |
-| `aidash-runner` | npm 包（GitHub Packages `@isharrrry/aidash-runner`）+ Release `.tgz` | 值守壳：向 AIDash 认领任务并拉起本地 harness |
-| `aidash-manager` | npm 包（GitHub Packages `@isharrrry/aidash-manager`）+ Release `.tgz` | 管理台：本机登记服务、启停、配置、看日志 |
+| `aidash-dist.tar.gz` | [Release 附件](https://github.com/isharrrry/AIDash/releases/latest) | AIDash 服务端 + Web，是被管理的目标 |
+| `aidash-runner` | npm 包 [GitHub Packages `@isharrrry/aidash-runner`](https://github.com/isharrrry/AIDash/pkgs/npm/aidash-runner) + Release `.tgz` | 值守壳：向 AIDash 认领任务并拉起本地 harness |
+| `aidash-manager` | npm 包 [GitHub Packages `@isharrrry/aidash-manager`](https://github.com/isharrrry/AIDash/pkgs/npm/aidash-manager) + Release `.tgz` | 管理台：本机登记服务、启停、配置、看日志 |
 
 安装（两个包都在 GitHub Packages，需要带 `read:packages` 的 GitHub 令牌）：
 
@@ -249,7 +251,7 @@ npm i -g @isharrrry/aidash-manager --registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=<GitHub 令牌>
 ```
 
-不想配置 GitHub 认证时，直接装 Release 附件里的 tgz 即可：`npm i -g ./aidash-runner-<版本>.tgz`。
+不想配置 GitHub 认证时，直接装 [Release 附件](https://github.com/isharrrry/AIDash/releases/latest) 里的 tgz 即可：`npm i -g ./aidash-runner-<版本>.tgz`。
 
 管理台只是本机管理入口，不替代 AIDash 服务端，也不替代 runner 的任务轮询与 harness 执行；`aidash-runner` 可以脱离管理台独立安装运行。
 
