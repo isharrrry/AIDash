@@ -2,7 +2,7 @@
 
 **English** | [中文](README.md)
 
-[![Release](https://github.com/isharrrry/AIDash/actions/workflows/release.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
+[![CI](https://github.com/isharrrry/AIDash/actions/workflows/ci.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
 
 > AIDash is not another agent framework, and it does not do the harness's job. It turns "how humans, agents, and agents exchange judgments and evidence" into a self-hosted interaction protocol: harnesses keep focusing on models, tools, and execution environments, while AIDash connects decisions, tasks, evidence, memory, and the watch runner.
 

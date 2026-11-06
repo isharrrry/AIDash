@@ -2,7 +2,7 @@
 
 **中文** | [English](README.en.md)
 
-[![Release](https://github.com/isharrrry/AIDash/actions/workflows/release.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
+[![CI](https://github.com/isharrrry/AIDash/actions/workflows/ci.yml/badge.svg)](https://github.com/isharrrry/AIDash/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/isharrrry/AIDash?display_name=tag&sort=semver)](https://github.com/isharrrry/AIDash/releases) [![License](https://img.shields.io/github/license/isharrrry/AIDash)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A5%2020.19-339933?logo=node.js&logoColor=white)
 
 > AIDash 不是另一个 Agent 框架，也不替 harness 干活。它把“人、Agent、Agent 与 Agent 之间怎么交换判断和证据”做成一层可自托管的交互协议：harness 继续专注模型、工具和执行环境，AIDash 负责把决策、任务、证据、记忆和值守串起来。
 
